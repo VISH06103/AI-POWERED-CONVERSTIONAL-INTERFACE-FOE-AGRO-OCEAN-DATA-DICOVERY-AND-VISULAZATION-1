@@ -1,0 +1,6 @@
+{
+  "name": "FloatChat - AI Ocean Intelligence & Fishermen Safety",
+  "description": "AI-powered ocean risk prediction and conversational safety assistant for fishermen using ARGO float data, cyclone heat potential analysis, offline advisory cache, and multi-channel emergency alerts.",
+  "requestFramePermissions": ["geolocation", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
