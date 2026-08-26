@@ -1,15 +1,11 @@
 import express from 'express';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { BASE_ARGO_FLOATS, COASTAL_PORTS, getEnrichedFloats } from './src/data/argoDataset.ts';
 import { evaluateOceanRisk, generateEmergencySMS, generateVhfRadioScript, MULTILINGUAL_ADVISORIES } from './src/utils/oceanPhysics.ts';
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
