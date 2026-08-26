@@ -1,19 +1,12 @@
 import express from 'express';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
-import { BASE_ARGO_FLOATS, COASTAL_PORTS, getEnrichedFloats } from './src/data/argoDataset.ts';
-import { evaluateOceanRisk, generateEmergencySMS, generateVhfRadioScript, MULTILINGUAL_ADVISORIES } from './src/utils/oceanPhysics.ts';
+import { BASE_ARGO_FLOATS, COASTAL_PORTS, getEnrichedFloats } from '../src/data/argoDataset.ts';
+import { evaluateOceanRisk, generateEmergencySMS, generateVhfRadioScript, MULTILINGUAL_ADVISORIES } from '../src/utils/oceanPhysics.ts';
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 const app = express();
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-
 app.use(express.json());
 
 // Initialize Gemini Client
@@ -24,7 +17,7 @@ function getGeminiClient(): GoogleGenAI | null {
       apiKey: process.env.GEMINI_API_KEY,
       httpOptions: {
         headers: {
-          'User-Agent': 'aistudio-build',
+          'User-Agent': 'aistudio-build-vercel',
         },
       },
     });
@@ -33,13 +26,13 @@ function getGeminiClient(): GoogleGenAI | null {
 }
 
 // In-memory active ARGO dataset with real-time simulated telemetry
-let currentFloats = getEnrichedFloats(BASE_ARGO_FLOATS);
+const currentFloats = getEnrichedFloats(BASE_ARGO_FLOATS);
 
 // Health check route
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    service: 'FloatChat AI Ocean Intelligence Engine',
+    service: 'FloatChat AI Ocean Intelligence Engine (Vercel Serverless)',
     geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
     floatsCount: currentFloats.length,
     timestamp: new Date().toISOString(),
@@ -160,7 +153,7 @@ TONE & GUIDELINES:
     const userPrompt = `User question / situation: "${message}"`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.7-flash',
+      model: 'gemini-2.5-flash',
       contents: userPrompt,
       config: {
         systemInstruction: systemPrompt,
@@ -172,7 +165,7 @@ TONE & GUIDELINES:
 
     res.json({
       reply: replyText,
-      source: 'gemini-3.7-flash',
+      source: 'gemini-2.5-flash',
       riskLevel: nearestFloat.riskLevel,
       nearestFloat: {
         wmoId: nearestFloat.wmoId,
@@ -182,7 +175,7 @@ TONE & GUIDELINES:
       },
     });
   } catch (error: any) {
-    console.error('Error in /api/gemini/chat:', error);
+    console.error('Error in /api/gemini/chat on Vercel:', error);
     res.status(500).json({
       error: 'Failed to process AI safety chat',
       details: error?.message || String(error),
@@ -220,7 +213,7 @@ Provide a concise 3-part brief:
 3. 24-Hour Sea Forecast for Coastal Craft`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.7-flash',
+        model: 'gemini-2.5-flash',
         contents: prompt,
         config: {
           temperature: 0.5,
@@ -251,31 +244,9 @@ Provide a concise 3-part brief:
       },
     });
   } catch (error: any) {
-    console.error('Error in /api/gemini/analyze:', error);
+    console.error('Error in /api/gemini/analyze on Vercel:', error);
     res.status(500).json({ error: 'Failed to generate deep ocean analysis' });
   }
 });
 
-// Vite middleware & Static serving
-async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
-
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`FloatChat AI Ocean Intelligence server running on http://0.0.0.0:${PORT}`);
-  });
-}
-
-startServer();
+export default app;
