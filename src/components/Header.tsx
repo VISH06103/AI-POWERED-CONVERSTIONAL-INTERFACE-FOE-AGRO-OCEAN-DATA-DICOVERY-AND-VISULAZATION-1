@@ -142,26 +142,36 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Right Controls & Utilities */}
         <div className="flex items-center gap-2 justify-between md:justify-end">
           
-          {/* User Profile Button */}
-          <div className="hidden lg:flex items-center">
+          {/* User Profile Button & Logout */}
+          <div className="hidden lg:flex items-center gap-1.5">
             {currentUser ? (
-              <button
-                onClick={onOpenLogin}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs text-slate-200 transition-colors"
-                title="Edit profile & village"
-              >
-                <div className="w-6 h-6 rounded-lg bg-blue-600 flex items-center justify-center text-[10px] font-bold text-white shadow">
-                  {currentUser.name.charAt(0).toUpperCase()}
-                </div>
-                <div className="text-left">
-                  <span className="font-bold text-white block text-[11px] leading-tight truncate max-w-[110px]">
-                    {currentUser.name}
-                  </span>
-                  <span className="text-[9px] text-slate-400 block font-mono">
-                    {currentUser.villageOrPort.split(' (')[0]}
-                  </span>
-                </div>
-              </button>
+              <>
+                <button
+                  onClick={onOpenLogin}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs text-slate-200 transition-colors"
+                  title="Edit profile & village"
+                >
+                  <div className="w-6 h-6 rounded-lg bg-blue-600 flex items-center justify-center text-[10px] font-bold text-white shadow">
+                    {currentUser.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="text-left">
+                    <span className="font-bold text-white block text-[11px] leading-tight truncate max-w-[110px]">
+                      {currentUser.name}
+                    </span>
+                    <span className="text-[9px] text-slate-400 block font-mono">
+                      {currentUser.villageOrPort.split(' (')[0]}
+                    </span>
+                  </div>
+                </button>
+
+                <button
+                  onClick={onLogout}
+                  className="p-1.5 rounded-xl bg-slate-900 hover:bg-rose-950/80 border border-slate-700 hover:border-rose-700 text-slate-400 hover:text-rose-300 text-xs transition-colors"
+                  title="Logout / Switch Captain"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </>
             ) : (
               <button
                 onClick={onOpenLogin}

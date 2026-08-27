@@ -257,3 +257,62 @@ export interface VillageConditionResult {
   timestamp: string;
 }
 
+export interface RegisteredRadioPacket {
+  id: string;
+  captainName: string;
+  phone: string;
+  boatName: string;
+  boatRegNumber: string;
+  boatType: string;
+  crewMembersCount: number;
+  homeVillageOrPort: string;
+  state: string;
+  language: string;
+  lat: number;
+  lng: number;
+  distanceOffshoreNm: number;
+  headingDegrees: number;
+  speedKnots: number;
+  waveHeightM: number;
+  tchpKjCm2: number;
+  surfaceTempC: number;
+  nearestFloatWmo: string;
+  riskLevel: OceanRiskLevel;
+  triggerReason: 'SIGNAL_JAMMED' | 'CAPSIZING_ALERT' | 'HIGH_SWELL' | 'MANUAL_MAYDAY' | 'DEADZONE_AUTO_TRIGGER';
+  signalStatus: 'JAMMED / DEADZONE' | 'EMERGENCY TRANSMITTING' | 'RADIO BEACON ACTIVE' | 'COAST GUARD ACK';
+  vhfChannel: string;
+  hfFrequency: string;
+  dscAlertFormat: string;
+  spokenVhfScript: string;
+  rawTelegramHex: string;
+  timestamp: string;
+  transmissionLog: {
+    time: string;
+    protocol: string;
+    status: 'TRANSMITTED' | 'STANDBY' | 'ACKNOWLEDGED';
+    details: string;
+  }[];
+}
+
+export interface VoyageNavigationState {
+  isVoyageActive: boolean;
+  voyageStartTime?: number;
+  distanceTravelledNm: number;
+  currentOffshoreNm: number;
+  departurePoint: {
+    name: string;
+    lat: number;
+    lng: number;
+    state: string;
+  };
+  currentPosition: {
+    lat: number;
+    lng: number;
+  };
+  bearingDegrees: number;
+  speedKnots: number;
+  connectionState: 'CELLULAR_4G' | 'SATELLITE_LINK' | 'SIGNAL_JAMMED_DEADZONE';
+  autoDistressSent: boolean;
+  activeRadioPacket: RegisteredRadioPacket | null;
+}
+

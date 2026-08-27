@@ -11,10 +11,13 @@ import {
   VolumeX, 
   FileText, 
   ShieldAlert, 
-  Send
+  Send,
+  UserCheck,
+  WifiOff,
+  Navigation
 } from 'lucide-react';
-import { ArgoFloat, CoastalPort, OceanRiskLevel } from '../types';
-import { generateEmergencySMS, generateVhfRadioScript } from '../utils/oceanPhysics';
+import { ArgoFloat, CoastalPort, MobileSensorReading, OceanRiskLevel, UserProfile, VillageConditionResult } from '../types';
+import { generateEmergencySMS, generateRegisteredCaptainRadioPacket, generateVhfRadioScript, playMarineRadioDistressAudio } from '../utils/oceanPhysics';
 
 interface EmergencyBroadcastModalProps {
   isOpen: boolean;
@@ -22,6 +25,10 @@ interface EmergencyBroadcastModalProps {
   selectedPort: CoastalPort;
   nearestFloat: ArgoFloat;
   riskLevel: OceanRiskLevel;
+  currentUser?: UserProfile | null;
+  activeVillageResult?: VillageConditionResult | null;
+  sensorReading?: MobileSensorReading;
+  isInternetJammed?: boolean;
 }
 
 export const EmergencyBroadcastModal: React.FC<EmergencyBroadcastModalProps> = ({
@@ -30,15 +37,53 @@ export const EmergencyBroadcastModal: React.FC<EmergencyBroadcastModalProps> = (
   selectedPort,
   nearestFloat,
   riskLevel,
+  currentUser,
+  activeVillageResult,
+  sensorReading,
+  isInternetJammed = false,
 }) => {
-  const [activeTab, setActiveTab] = useState<'sms' | 'vhf' | 'navtex' | 'contacts'>('sms');
+  const [activeTab, setActiveTab] = useState<'registered' | 'sms' | 'vhf' | 'navtex' | 'contacts'>('registered');
   const [copied, setCopied] = useState<string | null>(null);
   const [isPlayingRadio, setIsPlayingRadio] = useState(false);
+  const [audioStopFn, setAudioStopFn] = useState<(() => void) | null>(null);
 
   if (!isOpen) return null;
 
-  const smsText = generateEmergencySMS(selectedPort.name, riskLevel, nearestFloat.tchp, nearestFloat.waveHeight);
-  const vhfScript = generateVhfRadioScript(selectedPort.name, riskLevel, nearestFloat.wmoId, nearestFloat.tchp, nearestFloat.waveHeight);
+  const villageName = activeVillageResult?.villageName || currentUser?.villageOrPort || selectedPort.name;
+  const stateName = activeVillageResult?.state || currentUser?.state || selectedPort.state;
+
+  const defaultSensor: MobileSensorReading = sensorReading || {
+    isSensorSupported: true,
+    isSensorActive: true,
+    sensorSource: 'SIMULATED',
+    isInternetJammed,
+    signalStrengthPercent: isInternetJammed ? 0 : 85,
+    compassHeading: 115,
+    pitchAngle: 2,
+    rollAngle: 4,
+    isCapsizingRisk: false,
+    heaveAcceleration: 0.8,
+    waveChopIntensity: 'Moderate Swell (0.5-1.2G)',
+    barometricPressureHpa: 1008,
+    barometricPressureTrend: 'Steady (Stable Sea)',
+    gpsSpeedKnots: 8.5,
+    gpsHeading: 115,
+    gpsAccuracyMeters: 8,
+    timestamp: new Date().toLocaleTimeString(),
+  };
+
+  const registeredPacket = generateRegisteredCaptainRadioPacket(
+    currentUser || null,
+    nearestFloat,
+    villageName,
+    stateName,
+    defaultSensor,
+    riskLevel,
+    isInternetJammed ? 'SIGNAL_JAMMED' : 'DEADZONE_AUTO_TRIGGER'
+  );
+
+  const smsText = generateEmergencySMS(villageName, riskLevel, nearestFloat.tchp, nearestFloat.waveHeight);
+  const vhfScript = registeredPacket.spokenVhfScript;
 
   const handleCopy = (key: string, text: string) => {
     navigator.clipboard.writeText(text);
@@ -46,75 +91,30 @@ export const EmergencyBroadcastModal: React.FC<EmergencyBroadcastModalProps> = (
     setTimeout(() => setCopied(null), 2500);
   };
 
-  // Synthesize realistic VHF marine radio transmission with static noise and bandpass filtering
-  const playVhfRadioAudio = () => {
-    if (isPlayingRadio) {
-      window.speechSynthesis.cancel();
+  const handlePlayAudio = (textToSpeak: string) => {
+    if (isPlayingRadio && audioStopFn) {
+      audioStopFn();
       setIsPlayingRadio(false);
+      setAudioStopFn(null);
       return;
     }
 
-    if (!('speechSynthesis' in window)) {
-      alert('Text-to-speech not supported in this browser.');
-      return;
-    }
-
-    try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      
-      // Generate initial radio squelch chirp
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(800, audioCtx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.12);
-      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.12);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.12);
-
-      // Speak VHF Radio script with urgent maritime cadence
-      const utterance = new SpeechSynthesisUtterance(vhfScript);
-      utterance.rate = 0.92;
-      utterance.pitch = 0.95;
-
-      utterance.onend = () => {
-        // End Roger Beep
-        try {
-          const endOsc = audioCtx.createOscillator();
-          const endGain = audioCtx.createGain();
-          endOsc.type = 'sine';
-          endOsc.frequency.setValueAtTime(1200, audioCtx.currentTime);
-          endGain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-          endGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
-          endOsc.connect(endGain);
-          endGain.connect(audioCtx.destination);
-          endOsc.start();
-          endOsc.stop(audioCtx.currentTime + 0.15);
-        } catch (e) {}
+    const stop = playMarineRadioDistressAudio(
+      textToSpeak,
+      () => setIsPlayingRadio(true),
+      () => {
         setIsPlayingRadio(false);
-      };
-
-      utterance.onerror = () => setIsPlayingRadio(false);
-
-      setIsPlayingRadio(true);
-      window.speechSynthesis.speak(utterance);
-    } catch (e) {
-      console.warn('Audio Context failed, using standard SpeechSynthesis', e);
-      const utterance = new SpeechSynthesisUtterance(vhfScript);
-      utterance.onend = () => setIsPlayingRadio(false);
-      setIsPlayingRadio(true);
-      window.speechSynthesis.speak(utterance);
-    }
+        setAudioStopFn(null);
+      }
+    );
+    setAudioStopFn(() => stop);
   };
 
-  const navtexBullet = `ZCZC WA99\n${new Date().toISOString().slice(0, 10).replace(/-/g, '')} UTC\n${selectedPort.basin.toUpperCase()} COASTAL WARNING NR 412\n${selectedPort.name.toUpperCase()} SECTOR.\nARGO PROFILE BUOY ${nearestFloat.wmoId} INDICATES CYCLONIC HEAT BUILDUP TCHP ${nearestFloat.tchp} KJ/CM2.\nWAVE SWELLS ${nearestFloat.waveHeight} METERS, GUSTS ${nearestFloat.windSpeedKnots} KTS.\nALL CRAFTS ADVISE EXTREME CAUTION / RETURN TO PORT.\nNNNN`;
+  const navtexBullet = `ZCZC WA99\n${new Date().toISOString().slice(0, 10).replace(/-/g, '')} UTC\n${selectedPort.basin.toUpperCase()} COASTAL WARNING NR 412\n${villageName.toUpperCase()} SECTOR.\nREGISTERED MASTER: ${registeredPacket.captainName.toUpperCase()} (${registeredPacket.boatName.toUpperCase()})\nARGO PROFILE BUOY ${nearestFloat.wmoId} INDICATES CYCLONIC HEAT BUILDUP TCHP ${nearestFloat.tchp} KJ/CM2.\nWAVE SWELLS ${nearestFloat.waveHeight} METERS, GUSTS ${nearestFloat.windSpeedKnots} KTS.\nALL CRAFTS ADVISE EXTREME CAUTION / RETURN TO PORT.\nNNNN`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-[#020617]/85 backdrop-blur-md animate-fadeIn">
-      <div className="relative w-full max-w-2xl bg-[#0b0f19] border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="relative w-full max-w-3xl bg-[#0b0f19] border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         
         {/* Modal Header */}
         <div className="p-4 sm:p-5 border-b border-slate-800 bg-[#020617] flex items-center justify-between">
@@ -123,16 +123,16 @@ export const EmergencyBroadcastModal: React.FC<EmergencyBroadcastModalProps> = (
               <Radio className="w-5 h-5 animate-pulse" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white">Emergency Multi-Channel Broadcast Center</h3>
+              <h3 className="text-lg font-bold text-white">Emergency Radio & Broadcast Transponder</h3>
               <p className="text-xs text-slate-400">
-                Generate Instant SMS, VHF Ch 16 Radio & NAVTEX for Fishermen & Harbors
+                Registered Vessel Auto-Radio Relay, VHF Ch 16, DSC & 160-Char SMS
               </p>
             </div>
           </div>
 
           <button
             onClick={() => {
-              if (isPlayingRadio) window.speechSynthesis.cancel();
+              if (audioStopFn) audioStopFn();
               onClose();
             }}
             className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-white transition-colors"
@@ -143,6 +143,15 @@ export const EmergencyBroadcastModal: React.FC<EmergencyBroadcastModalProps> = (
 
         {/* Tab Selection */}
         <div className="flex border-b border-slate-800 bg-[#020617]/60 p-2 gap-1.5 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('registered')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+              activeTab === 'registered' ? 'bg-rose-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <UserCheck className="w-3.5 h-3.5" />
+            <span>Registered Captain VHF (Auto-Radio)</span>
+          </button>
           <button
             onClick={() => setActiveTab('sms')}
             className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
@@ -159,7 +168,7 @@ export const EmergencyBroadcastModal: React.FC<EmergencyBroadcastModalProps> = (
             }`}
           >
             <Radio className="w-3.5 h-3.5" />
-            <span>VHF Marine Ch 16 Radio</span>
+            <span>Coastal Securite Notice</span>
           </button>
           <button
             onClick={() => setActiveTab('navtex')}
@@ -184,7 +193,55 @@ export const EmergencyBroadcastModal: React.FC<EmergencyBroadcastModalProps> = (
         {/* Tab Content */}
         <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
           
-          {/* 1. 160-Char SMS Tab */}
+          {/* 1. Registered Captain Auto-Radio Tab */}
+          {activeTab === 'registered' && (
+            <div className="space-y-4">
+              <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs text-slate-300">
+                  <span>Registered Vessel: <strong className="text-white">{registeredPacket.boatName}</strong> ({registeredPacket.boatRegNumber})</span>
+                  <span className="mx-2 text-slate-600">•</span>
+                  <span>Master: <strong className="text-emerald-400">{registeredPacket.captainName}</strong> ({registeredPacket.phone})</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handlePlayAudio(registeredPacket.spokenVhfScript)}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition-all ${
+                      isPlayingRadio 
+                        ? 'bg-rose-600 text-white animate-pulse' 
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                    }`}
+                  >
+                    {isPlayingRadio ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                    <span>{isPlayingRadio ? 'Halt Radio Broadcast' : 'Broadcast VHF Voice'}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[#020617] border border-slate-800 font-mono text-xs text-amber-300 leading-relaxed whitespace-pre-wrap">
+                {registeredPacket.spokenVhfScript}
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  onClick={() => handleCopy('regVhf', registeredPacket.spokenVhfScript)}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow"
+                >
+                  {copied === 'regVhf' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  <span>{copied === 'regVhf' ? 'Copied to Clipboard!' : 'Copy Registered VHF Script'}</span>
+                </button>
+
+                <button
+                  onClick={() => handleCopy('dscTelegram', registeredPacket.dscAlertFormat)}
+                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-200 text-xs font-bold flex items-center gap-1.5"
+                >
+                  {copied === 'dscTelegram' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  <span>Copy DSC / AIS Telegram</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 2. 160-Char SMS Tab */}
           {activeTab === 'sms' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between text-xs">
@@ -224,19 +281,19 @@ export const EmergencyBroadcastModal: React.FC<EmergencyBroadcastModalProps> = (
             </div>
           )}
 
-          {/* 2. VHF Radio Tab */}
+          {/* 3. VHF Radio Tab */}
           {activeTab === 'vhf' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-300">VHF Marine Channel 16 Script</span>
+                  <span className="text-xs font-bold text-slate-300">Coastal Securite Marine Notice</span>
                   <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-rose-950 text-rose-300 border border-rose-800">
                     SECURITE SAFETY CALL
                   </span>
                 </div>
 
                 <button
-                  onClick={playVhfRadioAudio}
+                  onClick={() => handlePlayAudio(generateVhfRadioScript(villageName, riskLevel, nearestFloat.wmoId, nearestFloat.tchp, nearestFloat.waveHeight))}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition-all ${
                     isPlayingRadio 
                       ? 'bg-rose-600 text-white animate-pulse' 
@@ -249,11 +306,11 @@ export const EmergencyBroadcastModal: React.FC<EmergencyBroadcastModalProps> = (
               </div>
 
               <div className="p-4 rounded-2xl bg-[#020617] border border-slate-800 font-mono text-xs text-amber-300 leading-relaxed whitespace-pre-wrap">
-                {vhfScript}
+                {generateVhfRadioScript(villageName, riskLevel, nearestFloat.wmoId, nearestFloat.tchp, nearestFloat.waveHeight)}
               </div>
 
               <button
-                onClick={() => handleCopy('vhf', vhfScript)}
+                onClick={() => handleCopy('vhf', generateVhfRadioScript(villageName, riskLevel, nearestFloat.wmoId, nearestFloat.tchp, nearestFloat.waveHeight))}
                 className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors"
               >
                 {copied === 'vhf' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
@@ -262,7 +319,7 @@ export const EmergencyBroadcastModal: React.FC<EmergencyBroadcastModalProps> = (
             </div>
           )}
 
-          {/* 3. NAVTEX Tab */}
+          {/* 4. NAVTEX Tab */}
           {activeTab === 'navtex' && (
             <div className="space-y-4">
               <span className="text-xs font-bold text-slate-300">Standard Maritime Telex (518 kHz)</span>
@@ -279,7 +336,7 @@ export const EmergencyBroadcastModal: React.FC<EmergencyBroadcastModalProps> = (
             </div>
           )}
 
-          {/* 4. Coast Guard Directory Tab */}
+          {/* 5. Coast Guard Directory Tab */}
           {activeTab === 'contacts' && (
             <div className="space-y-3">
               <div className="p-3.5 rounded-xl bg-[#020617] border border-slate-800 flex items-center justify-between">
@@ -320,7 +377,7 @@ export const EmergencyBroadcastModal: React.FC<EmergencyBroadcastModalProps> = (
         <div className="p-4 border-t border-slate-800 bg-[#020617] flex justify-end">
           <button
             onClick={() => {
-              if (isPlayingRadio) window.speechSynthesis.cancel();
+              if (audioStopFn) audioStopFn();
               onClose();
             }}
             className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-colors"

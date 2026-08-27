@@ -1438,31 +1438,51 @@ export function identifyVillageOrStateCondition(
     }
   }
 
-  // 1. Check for exact or partial village match in coastal villages
-  let matchedVillage = !customCoordParsed ? COASTAL_VILLAGES.find(v => 
-    v.name.toLowerCase().includes(lowerQ) ||
-    v.district.toLowerCase().includes(lowerQ) ||
-    v.nativeName.toLowerCase().includes(lowerQ) ||
-    lowerQ.includes(v.name.toLowerCase()) ||
-    lowerQ.includes(v.district.toLowerCase())
-  ) : undefined;
+  // 1. Check for exact or high-precision village match in coastal villages database
+  const queryTokens = lowerQ.split(/[\s,./-]+/).filter(t => t.length > 1);
 
-  // 2. Check for matching entry in INDIAN_AND_GLOBAL_PLACES_DIRECTORY (e.g. Tumkur, Bangalore, etc.)
-  let matchedPlace = !customCoordParsed ? INDIAN_AND_GLOBAL_PLACES_DIRECTORY.find(p =>
-    p.name.toLowerCase().includes(lowerQ) ||
-    p.district.toLowerCase().includes(lowerQ) ||
-    p.nativeName.toLowerCase().includes(lowerQ) ||
-    lowerQ.includes(p.name.toLowerCase()) ||
-    lowerQ.includes(p.district.toLowerCase()) ||
-    p.aliases.some(a => lowerQ.includes(a) || a.includes(lowerQ))
-  ) : undefined;
+  let matchedVillage = !customCoordParsed ? COASTAL_VILLAGES.find(v => {
+    const vName = v.name.toLowerCase();
+    const vNative = v.nativeName.toLowerCase();
+    const vDist = v.district.toLowerCase();
+
+    // Exact or starts-with match
+    if (vName === lowerQ || vNative === lowerQ || vName.startsWith(lowerQ)) return true;
+    
+    // Exact token match (e.g. "Kasimedu", "Vizhinjam", "Veraval", "Dhanushkodi")
+    if (queryTokens.length > 0 && queryTokens.some(tok => tok.length >= 3 && vName.includes(tok))) return true;
+
+    return lowerQ.length >= 4 && (vName.includes(lowerQ) || vDist === lowerQ);
+  }) : undefined;
+
+  // 2. Check for exact or token match in INDIAN_AND_GLOBAL_PLACES_DIRECTORY (e.g. Tumkur, Bangalore, etc.)
+  let matchedPlace = (!customCoordParsed && !matchedVillage) ? INDIAN_AND_GLOBAL_PLACES_DIRECTORY.find(p => {
+    const pName = p.name.toLowerCase();
+    const pNative = p.nativeName.toLowerCase();
+    const pDist = p.district.toLowerCase();
+
+    // Exact equality
+    if (pName === lowerQ || pNative === lowerQ || pDist === lowerQ) return true;
+
+    // Exact alias matching (prevent short substrings from matching)
+    if (p.aliases.some(a => a.toLowerCase() === lowerQ || (lowerQ.length >= 4 && a.toLowerCase().startsWith(lowerQ)))) {
+      return true;
+    }
+
+    // Token match only if query has multiple words or long distinct query
+    if (lowerQ.length >= 5 && (pName.startsWith(lowerQ) || pName.includes(` ${lowerQ}`))) {
+      return true;
+    }
+
+    return false;
+  }) : undefined;
 
   // 3. Check for state match if no specific village/place
-  let matchedState = (!customCoordParsed && !matchedPlace && !matchedVillage) ? COASTAL_STATES.find(s => 
-    lowerQ.includes(s.name.toLowerCase()) ||
-    s.name.toLowerCase().includes(lowerQ) ||
-    s.districts.some(d => lowerQ.includes(d.toLowerCase()))
-  ) : undefined;
+  let matchedState = (!customCoordParsed && !matchedPlace && !matchedVillage) ? COASTAL_STATES.find(s => {
+    const sName = s.name.toLowerCase();
+    if (sName === lowerQ || lowerQ.includes(sName)) return true;
+    return s.districts.some(d => d.toLowerCase() === lowerQ || (lowerQ.length >= 4 && lowerQ.includes(d.toLowerCase())));
+  }) : undefined;
 
   let villageName = '';
   let district = '';
@@ -1748,3 +1768,72 @@ export function identifyVillageOrStateCondition(
     timestamp: new Date().toISOString()
   };
 }
+
+/**
+ * High-precision Asynchronous Geocoding Engine
+ * Tries local exact dictionary first, then OpenStreetMap Nominatim API for any village on Earth,
+ * and falls back safely to regional maritime coordinates.
+ */
+export async function identifyVillageOrStateConditionAsync(
+  query: string,
+  floats: ArgoFloat[],
+  isOffline: boolean = false
+): Promise<VillageConditionResult> {
+  const cleanQ = (query || '').trim();
+  if (!cleanQ) {
+    return identifyVillageOrStateCondition('Kasimedu Fishing Harbor', floats, isOffline);
+  }
+
+  // 1. Run local deterministic resolution first
+  const localRes = identifyVillageOrStateCondition(cleanQ, floats, isOffline);
+
+  // If already matched a specific coastal village or listed directory place or coordinates, return immediately
+  if (!localRes.isCustomGeocoded || isOffline) {
+    return localRes;
+  }
+
+  // 2. If online and it's an unlisted custom place, fetch real-world coordinates from Nominatim
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+    const resp = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cleanQ + (cleanQ.toLowerCase().includes('india') ? '' : ', India'))}&format=json&limit=1&addressdetails=1`,
+      {
+        signal: controller.signal,
+        headers: { 'Accept': 'application/json' }
+      }
+    );
+    clearTimeout(timeoutId);
+
+    if (resp.ok) {
+      const data = await resp.json();
+      if (Array.isArray(data) && data.length > 0) {
+        const hit = data[0];
+        const fetchedLat = parseFloat(hit.lat);
+        const fetchedLng = parseFloat(hit.lon);
+
+        if (!isNaN(fetchedLat) && !isNaN(fetchedLng) && fetchedLat >= -90 && fetchedLat <= 90 && fetchedLng >= -180 && fetchedLng <= 180) {
+          const coordQuery = `${fetchedLat.toFixed(4)}, ${fetchedLng.toFixed(4)}`;
+          const geoResolved = identifyVillageOrStateCondition(coordQuery, floats, false);
+          
+          const rawName = hit.address?.village || hit.address?.town || hit.address?.city || hit.address?.hamlet || hit.address?.suburb || hit.name || cleanQ;
+          const rawDistrict = hit.address?.state_district || hit.address?.county || hit.address?.district || hit.address?.city || 'District';
+          const rawState = hit.address?.state || geoResolved.state;
+
+          geoResolved.query = cleanQ;
+          geoResolved.villageName = rawName;
+          geoResolved.district = rawDistrict;
+          geoResolved.state = rawState;
+          geoResolved.isCustomGeocoded = true;
+          return geoResolved;
+        }
+      }
+    }
+  } catch (e) {
+    // Network or timeout failure - localRes used seamlessly
+  }
+
+  return localRes;
+}
+

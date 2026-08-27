@@ -25,10 +25,19 @@ import {
   Droplets,
   LifeBuoy,
   Activity,
-  RotateCcw
+  RotateCcw,
+  Crosshair,
+  LocateFixed,
+  Radio,
+  Phone,
+  PhoneCall,
+  TowerControl,
+  Headphones,
+  Signal
 } from 'lucide-react';
 import { ArgoFloat, CoastalVillage, VillageConditionResult } from '../types';
-import { COASTAL_STATES, COASTAL_VILLAGES, INDIAN_AND_GLOBAL_PLACES_DIRECTORY, identifyVillageOrStateCondition } from '../data/coastalVillages';
+import { COASTAL_STATES, COASTAL_VILLAGES, INDIAN_AND_GLOBAL_PLACES_DIRECTORY, identifyVillageOrStateCondition, identifyVillageOrStateConditionAsync } from '../data/coastalVillages';
+import { getCoastalRadioStation, playRadioHandshakeSound } from '../utils/oceanPhysics';
 
 interface VillageStateConditionFinderProps {
   floats: ArgoFloat[];
@@ -54,6 +63,11 @@ export const VillageStateConditionFinder: React.FC<VillageStateConditionFinderPr
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [activeTab, setActiveTab] = useState<'CONDITIONS' | 'TRACK' | 'BIODATA'>('CONDITIONS');
+  const [isGpsLocating, setIsGpsLocating] = useState(false);
+  const [gpsErrorMsg, setGpsErrorMsg] = useState<string | null>(null);
+  const [showCoordinateInput, setShowCoordinateInput] = useState(false);
+  const [customLat, setCustomLat] = useState('13.0827');
+  const [customLng, setCustomLng] = useState('80.2707');
 
   // Identify condition on initial mount or when query changes
   useEffect(() => {
@@ -65,52 +79,69 @@ export const VillageStateConditionFinder: React.FC<VillageStateConditionFinderPr
   const handleIdentify = async (searchQuery: string) => {
     if (!searchQuery.trim()) return;
     setIsSearching(true);
+    setGpsErrorMsg(null);
 
     const cleanQ = searchQuery.trim();
 
-    // 1. First run instant offline/local deterministic resolution
-    const localRes = identifyVillageOrStateCondition(cleanQ, floats, isOffline);
-
-    // 2. If online and it was a custom unlisted place without exact coords, attempt quick Nominatim geocode
-    if (!isOffline && localRes.isCustomGeocoded && typeof window !== 'undefined' && window.navigator.onLine) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 700);
-
-        const resp = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cleanQ)}&format=json&limit=1`,
-          {
-            signal: controller.signal,
-            headers: { 'Accept': 'application/json' }
-          }
-        );
-        clearTimeout(timeoutId);
-
-        if (resp.ok) {
-          const data = await resp.json();
-          if (data && data.length > 0) {
-            const hit = data[0];
-            const fetchedLat = parseFloat(hit.lat);
-            const fetchedLng = parseFloat(hit.lon);
-
-            if (!isNaN(fetchedLat) && !isNaN(fetchedLng)) {
-              // Re-run identifier with resolved GPS coordinates
-              const geoResolved = identifyVillageOrStateCondition(`${fetchedLat.toFixed(4)}, ${fetchedLng.toFixed(4)}`, floats, false);
-              geoResolved.villageName = hit.display_name?.split(',')[0] || cleanQ;
-              geoResolved.district = hit.display_name?.split(',')[1]?.trim() || localRes.district;
-              setResult(geoResolved);
-              setIsSearching(false);
-              return;
-            }
-          }
-        }
-      } catch {
-        // Fall back gracefully to local engine
+    try {
+      const condition = await identifyVillageOrStateConditionAsync(cleanQ, floats, isOffline);
+      setResult(condition);
+      if (onSetActiveLocation) {
+        onSetActiveLocation(condition);
       }
+    } catch {
+      const fallback = identifyVillageOrStateCondition(cleanQ, floats, true);
+      setResult(fallback);
+      if (onSetActiveLocation) {
+        onSetActiveLocation(fallback);
+      }
+    } finally {
+      setIsSearching(false);
     }
+  };
 
-    setResult(localRes);
-    setIsSearching(false);
+  const handleFetchDeviceGps = () => {
+    if (!navigator.geolocation) {
+      setGpsErrorMsg('GPS Geolocation is not supported in this environment. You can enter coordinates below.');
+      return;
+    }
+    setIsGpsLocating(true);
+    setGpsErrorMsg(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        const coordQuery = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        setQuery(coordQuery);
+        setCustomLat(lat.toFixed(4));
+        setCustomLng(lng.toFixed(4));
+        handleIdentify(coordQuery);
+        setIsGpsLocating(false);
+      },
+      (err) => {
+        console.warn('Geolocation failed:', err);
+        setGpsErrorMsg('Could not read hardware GPS directly. Entering default Kasimedu / Chennai GPS coordinates.');
+        const fallbackCoord = '13.0827, 80.2707';
+        setQuery(fallbackCoord);
+        handleIdentify(fallbackCoord);
+        setIsGpsLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+    );
+  };
+
+  const handleApplyCustomCoords = () => {
+    const latNum = parseFloat(customLat);
+    const lngNum = parseFloat(customLng);
+    if (isNaN(latNum) || isNaN(lngNum) || latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) {
+      setGpsErrorMsg('Please enter valid Latitude (-90 to 90) and Longitude (-180 to 180).');
+      return;
+    }
+    const coordQuery = `${latNum.toFixed(4)}, ${lngNum.toFixed(4)}`;
+    setQuery(coordQuery);
+    handleIdentify(coordQuery);
+    setShowCoordinateInput(false);
   };
 
   const handleQuickChip = (villageName: string) => {
@@ -208,57 +239,140 @@ export const VillageStateConditionFinder: React.FC<VillageStateConditionFinderPr
         </div>
       </div>
 
-      {/* Search Input Bar */}
-      <form 
-        onSubmit={(e) => {
-          e.preventDefault();
-          handleIdentify(query);
-        }}
-        className="flex flex-col sm:flex-row gap-2"
-      >
-        <div className="relative flex-1">
-          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-            <Search className="w-4 h-4" />
-          </div>
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Enter ANY place, village, district (e.g. Tumkur, Kasimedu, Malpe, Kerala, Pune, Digha...)"
-            list="coastal-suggestions"
-            className="w-full pl-10 pr-4 py-3 bg-[#020617] border border-slate-700 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all shadow-inner"
-          />
-          <datalist id="coastal-suggestions">
-            {INDIAN_AND_GLOBAL_PLACES_DIRECTORY.map(p => (
-              <option key={p.id} value={`${p.name}, ${p.state}`} />
-            ))}
-            {COASTAL_VILLAGES.map(v => (
-              <option key={v.id} value={`${v.name}, ${v.state}`} />
-            ))}
-            {COASTAL_STATES.map(s => (
-              <option key={s.name} value={`${s.name} Coast`} />
-            ))}
-          </datalist>
-        </div>
-
-        <button
-          type="submit"
-          disabled={isSearching}
-          className="px-5 py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-900/30 transition-all shrink-0"
+      {/* Search Input Bar & GPS Tools */}
+      <div className="space-y-2">
+        <form 
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleIdentify(query);
+          }}
+          className="flex flex-col sm:flex-row gap-2"
         >
-          {isSearching ? (
-            <span className="flex items-center gap-1.5">
-              <span className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
-              <span>Analyzing...</span>
+          <div className="relative flex-1">
+            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <Search className="w-4 h-4" />
+            </div>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Enter ANY place, village, district (e.g. Tumkur, Kasimedu, Malpe, 13.082, 80.270...)"
+              list="coastal-suggestions"
+              className="w-full pl-10 pr-4 py-3 bg-[#020617] border border-slate-700 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all shadow-inner"
+            />
+            <datalist id="coastal-suggestions">
+              {INDIAN_AND_GLOBAL_PLACES_DIRECTORY.map(p => (
+                <option key={p.id} value={`${p.name}, ${p.state}`} />
+              ))}
+              {COASTAL_VILLAGES.map(v => (
+                <option key={v.id} value={`${v.name}, ${v.state}`} />
+              ))}
+              {COASTAL_STATES.map(s => (
+                <option key={s.name} value={`${s.name} Coast`} />
+              ))}
+            </datalist>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Real Device GPS Trigger */}
+            <button
+              type="button"
+              onClick={handleFetchDeviceGps}
+              disabled={isGpsLocating}
+              className={`px-4 py-3 rounded-2xl border text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition-all shadow-lg shrink-0 ${
+                isGpsLocating
+                  ? 'bg-amber-600/30 border-amber-500/50 text-amber-300 animate-pulse'
+                  : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-cyan-400 hover:text-cyan-300'
+              }`}
+              title="Auto-detect and track your device GPS coordinates"
+            >
+              <LocateFixed className={`w-4 h-4 ${isGpsLocating ? 'animate-spin' : ''}`} />
+              <span>{isGpsLocating ? 'Acquiring GPS...' : 'Use Live GPS'}</span>
+            </button>
+
+            {/* Custom Coordinate Mode Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowCoordinateInput(!showCoordinateInput)}
+              className={`p-3 rounded-2xl border text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition-all shrink-0 ${
+                showCoordinateInput 
+                  ? 'bg-blue-600 text-white border-blue-400' 
+                  : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
+              }`}
+              title="Enter exact latitude and longitude coordinates"
+            >
+              <Crosshair className="w-4 h-4" />
+            </button>
+
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={isSearching}
+              className="px-5 py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-900/30 transition-all shrink-0"
+            >
+              {isSearching ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                  <span>Analyzing...</span>
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4" />
+                  <span>Identify & Track</span>
+                </span>
+              )}
+            </button>
+          </div>
+        </form>
+
+        {/* GPS Error or Status Notification */}
+        {gpsErrorMsg && (
+          <div className="p-2.5 rounded-xl bg-amber-950/60 border border-amber-700 text-amber-300 text-xs flex items-center justify-between">
+            <span>{gpsErrorMsg}</span>
+            <button onClick={() => setGpsErrorMsg(null)} className="text-slate-400 hover:text-white text-[10px] underline ml-2">
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {/* Custom Coordinates Sub-Bar */}
+        {showCoordinateInput && (
+          <div className="p-3.5 rounded-2xl bg-slate-950 border border-cyan-900/60 flex flex-wrap items-center gap-2.5 text-xs animate-fadeIn">
+            <span className="font-bold text-cyan-400 flex items-center gap-1">
+              <Crosshair className="w-3.5 h-3.5" />
+              <span>Input GPS Coordinates:</span>
             </span>
-          ) : (
-            <span className="flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4" />
-              <span>Identify & Track</span>
-            </span>
-          )}
-        </button>
-      </form>
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-500 font-mono">Lat:</span>
+              <input
+                type="text"
+                value={customLat}
+                onChange={(e) => setCustomLat(e.target.value)}
+                placeholder="13.0827"
+                className="w-24 px-2.5 py-1.5 bg-[#020617] border border-slate-700 rounded-lg text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-500 font-mono">Lng:</span>
+              <input
+                type="text"
+                value={customLng}
+                onChange={(e) => setCustomLng(e.target.value)}
+                placeholder="80.2707"
+                className="w-24 px-2.5 py-1.5 bg-[#020617] border border-slate-700 rounded-lg text-white font-mono text-xs focus:outline-none focus:border-cyan-400"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleApplyCustomCoords}
+              className="px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs flex items-center gap-1"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Track GPS Fix</span>
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Quick Search Chips */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs">

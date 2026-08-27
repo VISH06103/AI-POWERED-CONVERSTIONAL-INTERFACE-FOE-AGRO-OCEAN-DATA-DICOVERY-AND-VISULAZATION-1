@@ -1,4 +1,4 @@
-import { ArgoFloat, DepthProfilePoint, FishSpeciesBiodata, LocationTrackInfo, MarineBiodata, OceanRiskAssessment, OceanRiskLevel } from '../types';
+import { ArgoFloat, DepthProfilePoint, FishSpeciesBiodata, LocationTrackInfo, MarineBiodata, MobileSensorReading, OceanRiskAssessment, OceanRiskLevel, RegisteredRadioPacket, UserProfile } from '../types';
 
 /**
  * Calculates initial compass bearing in degrees (0 to 360) between two coordinates
@@ -614,6 +614,242 @@ export function generateEmergencySMS(portName: string, riskLevel: OceanRiskLevel
   return `[FLOATCHAT NOTICE ${timestamp}] ${portName}: ALL CLEAR. Wave ${waveHeight}m, normal sea temp. Safe window for fishing operations. Safe voyage.`;
 }
 
+export interface CoastalRadioStationInfo {
+  stationName: string;
+  callsign: string;
+  primaryVhfChannel: string;
+  vhfFrequencyMhz: number;
+  hfDistressKhz: number;
+  dscMmsi: string;
+  coverageSector: string;
+  mrccHelpline: string;
+  mrccPhoneFormatted: string;
+  mrccPhoneRaw: string;
+  stationDirectPhone: string;
+  stationDirectPhoneFormatted: string;
+  districtFisheriesOfficer: string;
+  districtFisheriesPhoneRaw: string;
+  transmissionRangeNm: number;
+  coastalRadarActive: boolean;
+}
+
+/**
+ * Returns regional coastal radio station details based on state or village
+ */
+export function getCoastalRadioStation(stateOrPort: string): CoastalRadioStationInfo {
+  const str = (stateOrPort || '').toLowerCase();
+  
+  if (str.includes('tamil') || str.includes('chennai') || str.includes('nagapattinam') || str.includes('rameswaram') || str.includes('tuticorin') || str.includes('kanyakumari') || str.includes('cuddalore') || str.includes('pondicherry') || str.includes('puducherry')) {
+    return {
+      stationName: 'Chennai Coastal Marine Radio Station',
+      callsign: 'VWM (Chennai Radio)',
+      primaryVhfChannel: 'VHF Channel 16 (156.800 MHz) & Ch 26',
+      vhfFrequencyMhz: 156.8,
+      hfDistressKhz: 2182.0,
+      dscMmsi: '004190100',
+      coverageSector: 'Coromandel Coast & Palk Bay Sector',
+      mrccHelpline: '1554',
+      mrccPhoneFormatted: '+91-44-23460405',
+      mrccPhoneRaw: '+914423460405',
+      stationDirectPhone: '+914423460405',
+      stationDirectPhoneFormatted: '+91-44-23460405',
+      districtFisheriesOfficer: '+91-44-24336311 (Chennai Harbor Master)',
+      districtFisheriesPhoneRaw: '+914424336311',
+      transmissionRangeNm: 40,
+      coastalRadarActive: true,
+    };
+  }
+
+  if (str.includes('kerala') || str.includes('kochi') || str.includes('cochin') || str.includes('kollam') || str.includes('vizhinjam') || str.includes('kozhikode') || str.includes('alappuzha') || str.includes('munambam') || str.includes('lakshadweep') || str.includes('kavaratti')) {
+    return {
+      stationName: 'Kochi Maritime Coastal Radio Station',
+      callsign: 'VWN (Kochi Radio)',
+      primaryVhfChannel: 'VHF Channel 16 (156.800 MHz) & Ch 24',
+      vhfFrequencyMhz: 156.8,
+      hfDistressKhz: 2182.0,
+      dscMmsi: '004190200',
+      coverageSector: 'Malabar Coast & Lakshadweep Sea Sector',
+      mrccHelpline: '1554',
+      mrccPhoneFormatted: '+91-484-2216444',
+      mrccPhoneRaw: '+914842216444',
+      stationDirectPhone: '+914842216444',
+      stationDirectPhoneFormatted: '+91-484-2216444',
+      districtFisheriesOfficer: '+91-484-2351234 (Kochi Marine Station)',
+      districtFisheriesPhoneRaw: '+914842351234',
+      transmissionRangeNm: 45,
+      coastalRadarActive: true,
+    };
+  }
+
+  if (str.includes('karnataka') || str.includes('mangalore') || str.includes('malpe') || str.includes('karwar') || str.includes('tumkur') || str.includes('bangalore') || str.includes('bengaluru') || str.includes('bhatkal') || str.includes('udupi') || str.includes('honnavar')) {
+    return {
+      stationName: 'Mangalore Coastal Radio & Maritime Control',
+      callsign: 'VWO (Mangalore Radio)',
+      primaryVhfChannel: 'VHF Channel 16 (156.800 MHz) & Ch 28',
+      vhfFrequencyMhz: 156.8,
+      hfDistressKhz: 2182.0,
+      dscMmsi: '004190300',
+      coverageSector: 'Canara Coast & Central Arabian Sea',
+      mrccHelpline: '1554',
+      mrccPhoneFormatted: '+91-824-2405266',
+      mrccPhoneRaw: '+918242405266',
+      stationDirectPhone: '+918242405266',
+      stationDirectPhoneFormatted: '+91-824-2405266',
+      districtFisheriesOfficer: '+91-824-2424108 (Mangalore Fisheries)',
+      districtFisheriesPhoneRaw: '+918242424108',
+      transmissionRangeNm: 40,
+      coastalRadarActive: true,
+    };
+  }
+
+  if (str.includes('andhra') || str.includes('vizag') || str.includes('visakhapatnam') || str.includes('kakinada') || str.includes('machilipatnam') || str.includes('nizampatnam') || str.includes('krishnapatnam')) {
+    return {
+      stationName: 'Visakhapatnam Coastal Marine Radio',
+      callsign: 'VXV (Vizag Radio)',
+      primaryVhfChannel: 'VHF Channel 16 (156.800 MHz) & Ch 27',
+      vhfFrequencyMhz: 156.8,
+      hfDistressKhz: 2182.0,
+      dscMmsi: '004190400',
+      coverageSector: 'Northern Bay of Bengal & Andhra Coast',
+      mrccHelpline: '1554',
+      mrccPhoneFormatted: '+91-891-2565154',
+      mrccPhoneRaw: '+918912565154',
+      stationDirectPhone: '+918912565154',
+      stationDirectPhoneFormatted: '+91-891-2565154',
+      districtFisheriesOfficer: '+91-891-2564321 (Vizag Port Control)',
+      districtFisheriesPhoneRaw: '+918912564321',
+      transmissionRangeNm: 40,
+      coastalRadarActive: true,
+    };
+  }
+
+  if (str.includes('maharashtra') || str.includes('mumbai') || str.includes('bombay') || str.includes('ratnagiri') || str.includes('goa') || str.includes('mormugao') || str.includes('panaji') || str.includes('alibaug') || str.includes('dahanu')) {
+    return {
+      stationName: 'Mumbai Coast Guard MRCC & Coastal Radio',
+      callsign: 'VWE (Mumbai Radio)',
+      primaryVhfChannel: 'VHF Channel 16 (156.800 MHz) & Ch 25',
+      vhfFrequencyMhz: 156.8,
+      hfDistressKhz: 2182.0,
+      dscMmsi: '004190500',
+      coverageSector: 'Konkan Coast & Northern Arabian Sea',
+      mrccHelpline: '1554',
+      mrccPhoneFormatted: '+91-22-24388065',
+      mrccPhoneRaw: '+912224388065',
+      stationDirectPhone: '+912224388065',
+      stationDirectPhoneFormatted: '+91-22-24388065',
+      districtFisheriesOfficer: '+91-22-22612345 (Mumbai Harbor Master)',
+      districtFisheriesPhoneRaw: '+912222612345',
+      transmissionRangeNm: 50,
+      coastalRadarActive: true,
+    };
+  }
+
+  if (str.includes('gujarat') || str.includes('veraval') || str.includes('okha') || str.includes('kandla') || str.includes('porbandar') || str.includes('mundra') || str.includes('jafrabad') || str.includes('mangrol')) {
+    return {
+      stationName: 'Okha / Veraval Maritime Coastal Radio',
+      callsign: 'VWP (Gujarat Coast Radio)',
+      primaryVhfChannel: 'VHF Channel 16 (156.800 MHz) & Ch 23',
+      vhfFrequencyMhz: 156.8,
+      hfDistressKhz: 2182.0,
+      dscMmsi: '004190600',
+      coverageSector: 'Gulf of Kutch & Saurashtra Coast',
+      mrccHelpline: '1554',
+      mrccPhoneFormatted: '+91-2892-262154',
+      mrccPhoneRaw: '+912892262154',
+      stationDirectPhone: '+912892262154',
+      stationDirectPhoneFormatted: '+91-2892-262154',
+      districtFisheriesOfficer: '+91-2876-220100 (Veraval Port Control)',
+      districtFisheriesPhoneRaw: '+912876220100',
+      transmissionRangeNm: 45,
+      coastalRadarActive: true,
+    };
+  }
+
+  if (str.includes('odisha') || str.includes('orissa') || str.includes('puri') || str.includes('paradip') || str.includes('dhamra') || str.includes('gopalpur') || str.includes('bengal') || str.includes('kolkata') || str.includes('digha') || str.includes('haldia') || str.includes('kakdwip') || str.includes('andaman') || str.includes('port blair')) {
+    return {
+      stationName: 'Paradip & Kolkata Coastal Radio Station',
+      callsign: 'VWP (East Coast Maritime)',
+      primaryVhfChannel: 'VHF Channel 16 (156.800 MHz) & Ch 26',
+      vhfFrequencyMhz: 156.8,
+      hfDistressKhz: 2182.0,
+      dscMmsi: '004190700',
+      coverageSector: 'Odisha & Bengal Delta Coastal Zone',
+      mrccHelpline: '1554',
+      mrccPhoneFormatted: '+91-6722-222144',
+      mrccPhoneRaw: '+916722222144',
+      stationDirectPhone: '+91-6722-222144',
+      stationDirectPhoneFormatted: '+91-6722-222144',
+      districtFisheriesOfficer: '+91-3220-266100 (Digha Coastal Station)',
+      districtFisheriesPhoneRaw: '+913220266100',
+      transmissionRangeNm: 45,
+      coastalRadarActive: true,
+    };
+  }
+
+  // Default National Coastal Station
+  return {
+    stationName: 'National Coastal Maritime Radio Network',
+    callsign: 'VWM / IN-MRCC',
+    primaryVhfChannel: 'VHF Channel 16 (156.800 MHz)',
+    vhfFrequencyMhz: 156.8,
+    hfDistressKhz: 2182.0,
+    dscMmsi: '004190001',
+    coverageSector: 'Indian Ocean Coastal & EEZ Zone',
+    mrccHelpline: '1554',
+    mrccPhoneFormatted: '1554 (Coast Guard MRCC)',
+    mrccPhoneRaw: '1554',
+    stationDirectPhone: '+914423460405',
+    stationDirectPhoneFormatted: '+91-44-23460405',
+    districtFisheriesOfficer: '1800-425-1554 (Fisheries Control)',
+    districtFisheriesPhoneRaw: '18004251554',
+    transmissionRangeNm: 35,
+    coastalRadarActive: true,
+  };
+}
+
+/**
+ * Formats a specialized, high-priority emergency SMS targeting the registered captain's phone number
+ */
+export function generateRegisteredCaptainSMS(
+  user: UserProfile | null,
+  float: ArgoFloat,
+  currentVillageName: string,
+  currentStateName: string,
+  riskLevel: OceanRiskLevel,
+  pos: { lat: number; lng: number; offshoreNm?: number },
+  isJammedOrOffline: boolean = true
+): {
+  smsText: string;
+  targetPhone: string;
+  captainName: string;
+  boatName: string;
+  boatRegNumber: string;
+  charCount: number;
+} {
+  const captain = user?.name || 'Capt. Murugesan';
+  const phone = user?.phone || '+91 94440 15540';
+  const boat = user?.boatName || 'Meenava Thalaivan';
+  const regNumber = user?.boatRegNumber || 'IND-TN-02-MM-1088';
+  const village = user?.villageOrPort || currentVillageName || 'Kasimedu';
+  const state = user?.state || currentStateName || 'Tamil Nadu';
+  const offshore = pos.offshoreNm ? `${pos.offshoreNm}NM` : '15NM';
+  const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const statusTag = isJammedOrOffline ? 'NET-FAILOVER' : 'AUTO-ALERT';
+  
+  // Compact 160-char GSM compatible text
+  const smsText = `[FLOAT-ALERT ${timestamp}] ${captain}|${boat}(${regNumber})|POS:${pos.lat.toFixed(3)}N,${pos.lng.toFixed(3)}E(${offshore} off ${village})|${statusTag}|BUOY #${float.wmoId}:WAVE ${float.waveHeight}m,TCHP ${float.tchp}k|HAZARD:${riskLevel}|VHF:16`;
+
+  return {
+    smsText,
+    targetPhone: phone,
+    captainName: captain,
+    boatName: boat,
+    boatRegNumber: regNumber,
+    charCount: smsText.length,
+  };
+}
+
 /**
  * Formats a VHF Coastal Marine Distress/Securite Radio script
  */
@@ -626,3 +862,259 @@ export function generateVhfRadioScript(portName: string, riskLevel: OceanRiskLev
   }
   return `ALL STATIONS. FLOATCHAT ROUTINE BULLETIN FOR ${portName.toUpperCase()}. NORMAL SWELL ${waveHeight} METERS. SST STABLE. SAFE NAVIGATION REPORTED ACROSS ALL INSHORE SECTORS. STANDBY ON CHANNEL 16. OUT.`;
 }
+
+/**
+ * Assembles a comprehensive, maritime-standard Emergency Radio & DSC Data Packet
+ * for a registered captain and vessel in case of signal jamming, deadzone, or extreme ocean risk.
+ */
+export function generateRegisteredCaptainRadioPacket(
+  user: UserProfile | null,
+  float: ArgoFloat,
+  currentVillageName: string,
+  currentStateName: string,
+  sensor: MobileSensorReading,
+  riskLevel: OceanRiskLevel,
+  triggerReason: 'SIGNAL_JAMMED' | 'CAPSIZING_ALERT' | 'HIGH_SWELL' | 'MANUAL_MAYDAY' | 'DEADZONE_AUTO_TRIGGER',
+  overridePos?: { lat: number; lng: number; offshoreNm?: number }
+): RegisteredRadioPacket {
+  const captain = user?.name || 'Authorized Coastal Captain';
+  const phone = user?.phone || '+91-94440-15540';
+  const boat = user?.boatName || 'Meenava Thalaivan';
+  const regNumber = user?.boatRegNumber || 'IND-TN-02-MM-1088';
+  const boatType = user?.boatType || 'Motorized Trawler';
+  const crewCount = user?.crewMembersCount || 4;
+  const village = user?.villageOrPort || currentVillageName || 'Kasimedu Coastal Sector';
+  const state = user?.state || currentStateName || 'Tamil Nadu';
+  const language = user?.language || 'en';
+
+  const lat = overridePos?.lat ?? sensor.gpsLat ?? float.lat;
+  const lng = overridePos?.lng ?? sensor.gpsLng ?? float.lng;
+  const offshoreNm = overridePos?.offshoreNm ?? (Math.round(calculateDistanceKm(float.lat, float.lng, lat, lng) * 0.539957) || 18.5);
+
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const utcStr = now.toISOString().replace(/T/, ' ').slice(0, 19) + ' UTC';
+
+  // Determine urgency prefix
+  const callPrefix = triggerReason === 'CAPSIZING_ALERT' || triggerReason === 'MANUAL_MAYDAY'
+    ? 'MAYDAY MAYDAY MAYDAY'
+    : 'PAN-PAN PAN-PAN PAN-PAN';
+
+  const spokenVhfScript = `${callPrefix}. ALL STATIONS, ALL STATIONS, ALL STATIONS. THIS IS REGISTERED VESSEL "${boat.toUpperCase()}", REGISTRATION ${regNumber.toUpperCase()}, CALLING ON VHF CHANNEL 16 AND HF EMERGENCY FREQUENCY 2182 KHZ.
+
+I AM CAPTAIN ${captain.toUpperCase()}, REGISTERED CELL ${phone}, DEPARTED FROM ${village.toUpperCase()}, ${state.toUpperCase()}. WE HAVE ${crewCount} SOULS ON BOARD.
+
+VESSEL TYPE: ${boatType.toUpperCase()}.
+LAST KNOWN POSITION: ${lat.toFixed(4)} NORTH, ${lng.toFixed(4)} EAST, APPROXIMATELY ${offshoreNm} NAUTICAL MILES OFFSHORE.
+HEADING: ${sensor.compassHeading || 115} DEGREES AT ${sensor.gpsSpeedKnots || 8.5} KNOTS.
+
+AUTOMATIC TRANSMISSION TRIGGER: ${triggerReason.replace(/_/g, ' ')}.
+COMMUNICATION LINK: SATELLITE & 4G/5G CARRIER DEADZONE / JAMMED. AUTOMATIC RADIO BEACON ACTIVATED.
+
+LOCAL OCEAN TELEMETRY VIA NEAREST ARGO BUOY #${float.wmoId}:
+WAVE SWELL ESTIMATED AT ${float.waveHeight} METERS.
+TROPICAL CYCLONE HEAT POTENTIAL: ${float.tchp} KILOJOULES PER SQUARE CENTIMETER.
+SEA SURFACE TEMPERATURE: ${float.surfaceTemp} DEGREES CELSIUS.
+OVERALL MARITIME HAZARD LEVEL: ${riskLevel.replace(/_/g, ' ')}.
+
+REQUEST ALL VESSELS IN VICINITY AND INDIAN COAST GUARD MRCC AT HELPLINE 1554 TO LOG OUR POSITION, MAINTAIN RADAR VIGILANCE, AND RELAY ACKNOWLEDGEMENT ON VHF CHANNEL 16.
+
+VESSEL "${boat.toUpperCase()}" REGISTRATION ${regNumber.toUpperCase()} OVER AND STANDING BY ON CHANNEL 16.`;
+
+  const dscAlertFormat = `DSC-DISTRESS: MMSI-419001088 // CALLSIGN: ${regNumber} // VESSEL: ${boat} // MASTER: ${captain} // NATURE: ${triggerReason} // POS: ${lat.toFixed(4)}N ${lng.toFixed(4)}E // OFFSHORE: ${offshoreNm}NM // POB: ${crewCount} // ARGO-LINK: #${float.wmoId} // TCHP: ${float.tchp} // WAVE: ${float.waveHeight}M // TIME: ${utcStr}`;
+
+  const hexBytes = `0xAA55F0${regNumber.replace(/[^A-Z0-9]/gi, '').slice(0, 8)}E944${Math.round(lat * 1000).toString(16)}${Math.round(lng * 1000).toString(16)}FF`;
+
+  return {
+    id: `RADIO-PKT-${Date.now()}`,
+    captainName: captain,
+    phone,
+    boatName: boat,
+    boatRegNumber: regNumber,
+    boatType,
+    crewMembersCount: crewCount,
+    homeVillageOrPort: village,
+    state,
+    language,
+    lat,
+    lng,
+    distanceOffshoreNm: offshoreNm,
+    headingDegrees: sensor.compassHeading || 115,
+    speedKnots: sensor.gpsSpeedKnots || 8.5,
+    waveHeightM: float.waveHeight,
+    tchpKjCm2: float.tchp,
+    surfaceTempC: float.surfaceTemp,
+    nearestFloatWmo: float.wmoId,
+    riskLevel,
+    triggerReason,
+    signalStatus: 'RADIO BEACON ACTIVE',
+    vhfChannel: 'VHF Ch 16 (156.800 MHz) Distress & Calling',
+    hfFrequency: 'HF 2182.0 kHz / DSC 2187.5 kHz',
+    dscAlertFormat,
+    spokenVhfScript,
+    rawTelegramHex: hexBytes.toUpperCase(),
+    timestamp: timeStr,
+    transmissionLog: [
+      {
+        time: timeStr,
+        protocol: 'VHF Ch 16 (156.8 MHz FM)',
+        status: 'TRANSMITTED',
+        details: `Spoken Radio Distress broadcast for Captain ${captain} (${boat}) with GPS Fix & Ocean Wave Data`,
+      },
+      {
+        time: timeStr,
+        protocol: 'Marine DSC Alert (Ch 70 / 2187.5 kHz)',
+        status: 'TRANSMITTED',
+        details: `Digital Selective Calling Distress Telegram dispatched to Coast Guard MRCC`,
+      },
+      {
+        time: timeStr,
+        protocol: 'Cospas-Sarsat EPIRB Beacon (406.025 MHz)',
+        status: 'TRANSMITTED',
+        details: `Encrypted Satellite Emergency Position Indicating Radio Beacon hex ${hexBytes.slice(0, 10)}`,
+      },
+      {
+        time: timeStr,
+        protocol: 'Indian Coast Guard SAR Relay (Helpline 1554)',
+        status: 'ACKNOWLEDGED',
+        details: `Automated station registry log confirmed for ${regNumber} (${village}, ${state})`,
+      },
+    ],
+  };
+}
+
+/**
+ * Plays an authentic VHF marine radio tone, squelch chirp, and speaks the registered distress script
+ */
+export function playMarineRadioDistressAudio(
+  scriptText: string,
+  onStart?: () => void,
+  onEnd?: () => void
+): () => void {
+  if (!('speechSynthesis' in window)) {
+    console.warn('Speech synthesis not supported');
+    return () => {};
+  }
+
+  let isCancelled = false;
+  window.speechSynthesis.cancel();
+
+  try {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    
+    // Play Maritime Two-Tone Alarm (2200Hz and 1300Hz alternation)
+    const t0 = audioCtx.currentTime;
+    const osc1 = audioCtx.createOscillator();
+    const gain1 = audioCtx.createGain();
+    osc1.type = 'sawtooth';
+    osc1.frequency.setValueAtTime(2200, t0);
+    osc1.frequency.setValueAtTime(1300, t0 + 0.15);
+    osc1.frequency.setValueAtTime(2200, t0 + 0.30);
+    osc1.frequency.setValueAtTime(1300, t0 + 0.45);
+    
+    gain1.gain.setValueAtTime(0.25, t0);
+    gain1.gain.exponentialRampToValueAtTime(0.01, t0 + 0.6);
+    
+    osc1.connect(gain1);
+    gain1.connect(audioCtx.destination);
+    osc1.start(t0);
+    osc1.stop(t0 + 0.6);
+
+    // Initial VHF Radio squelch burst (white noise burst)
+    const bufferSize = audioCtx.sampleRate * 0.12;
+    const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const output = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      output[i] = Math.random() * 2 - 1;
+    }
+    const whiteNoise = audioCtx.createBufferSource();
+    whiteNoise.buffer = noiseBuffer;
+    const noiseGain = audioCtx.createGain();
+    noiseGain.gain.setValueAtTime(0.18, t0 + 0.65);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, t0 + 0.77);
+    whiteNoise.connect(noiseGain);
+    noiseGain.connect(audioCtx.destination);
+    whiteNoise.start(t0 + 0.65);
+
+    // Speak radio distress with maritime cadence after tones
+    setTimeout(() => {
+      if (isCancelled) return;
+      if (onStart) onStart();
+
+      const utterance = new SpeechSynthesisUtterance(scriptText);
+      utterance.rate = 0.94;
+      utterance.pitch = 0.98;
+
+      utterance.onend = () => {
+        // End Roger Beep
+        try {
+          const endOsc = audioCtx.createOscillator();
+          const endGain = audioCtx.createGain();
+          endOsc.type = 'sine';
+          endOsc.frequency.setValueAtTime(1400, audioCtx.currentTime);
+          endGain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+          endGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+          endOsc.connect(endGain);
+          endGain.connect(audioCtx.destination);
+          endOsc.start();
+          endOsc.stop(audioCtx.currentTime + 0.15);
+        } catch (e) {}
+        if (onEnd) onEnd();
+      };
+
+      utterance.onerror = () => {
+        if (onEnd) onEnd();
+      };
+
+      window.speechSynthesis.speak(utterance);
+    }, 800);
+
+  } catch (e) {
+    if (onStart) onStart();
+    const utterance = new SpeechSynthesisUtterance(scriptText);
+    utterance.onend = () => { if (onEnd) onEnd(); };
+    utterance.onerror = () => { if (onEnd) onEnd(); };
+    window.speechSynthesis.speak(utterance);
+  }
+
+  return () => {
+    isCancelled = true;
+    window.speechSynthesis.cancel();
+  };
+}
+
+/**
+ * Plays a distinct two-tone radio frequency handshake synthesizer chime (VHF Carrier Lock)
+ */
+export function playRadioHandshakeSound(): void {
+  try {
+    const AudioCtxClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtxClass) return;
+    const audioCtx = new AudioCtxClass();
+    const t0 = audioCtx.currentTime;
+
+    // Dual Frequency Subcarrier Tuning beep (800Hz -> 1750Hz lock)
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(800, t0);
+    osc.frequency.exponentialRampToValueAtTime(1750, t0 + 0.12);
+    osc.frequency.setValueAtTime(1750, t0 + 0.12);
+    osc.frequency.setValueAtTime(2182, t0 + 0.22);
+
+    gain.gain.setValueAtTime(0.001, t0);
+    gain.gain.linearRampToValueAtTime(0.18, t0 + 0.04);
+    gain.gain.setValueAtTime(0.18, t0 + 0.22);
+    gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.38);
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start(t0);
+    osc.stop(t0 + 0.38);
+  } catch (e) {
+    // Graceful fallback
+  }
+}
+

@@ -81,11 +81,14 @@ app.post('/api/gemini/chat', async (req, res) => {
 
     const ai = getGeminiClient();
     const portName = context?.villageName || context?.selectedPort?.name || 'Local Coastal Waters';
+    const districtName = context?.district || '';
     const stateName = context?.state || '';
     const captainName = context?.captainName || '';
     const boatName = context?.boatName || '';
     const boatType = context?.boatType || '';
     const nearestFloat = context?.selectedFloat || currentFloats[0];
+    const distanceKm = context?.distanceKm || '';
+    const distanceNm = context?.distanceNm || '';
     const language = context?.language || 'en';
     const isOfflineMode = Boolean(context?.offlineMode);
 
@@ -96,25 +99,29 @@ app.post('/api/gemini/chat', async (req, res) => {
       let offlineText = '';
 
       const captainPrefix = captainName ? `Captain ${captainName} (${boatName || 'Vessel'} - ${boatType || 'Fishing Craft'}), ` : '';
+      const locationLabel = `${portName}${districtName ? `, ${districtName}` : ''}${stateName ? ` (${stateName})` : ''}`;
 
       if (risk.riskLevel === 'HIGH_RISK') {
         offlineText = `🚨 [FloatChat Offline Engine - High Danger Warning]\n\n` +
           `${captainPrefix}${localized.highRisk}\n\n` +
-          `• Sector: ${portName} ${stateName ? `(${stateName})` : ''} | Linked ARGO Buoy #${nearestFloat.wmoId}\n` +
+          `• Tracked Location: ${locationLabel}\n` +
+          `• Nearest Profiler: ARGO Buoy #${nearestFloat.wmoId} (${distanceKm ? `${distanceKm} km / ${distanceNm} NM offshore` : 'Linked Sector'})\n` +
           `• Ocean Energy: High Cyclone Heat Potential (${nearestFloat.tchp} kJ/cm²) with Sea Surface Temp ${nearestFloat.surfaceTemp}°C.\n` +
           `• Wave Swell: ~${nearestFloat.waveHeight}m, Surface Winds: ${nearestFloat.windSpeedKnots} knots.\n` +
-          `• Action Directive: STRICT RED ALERT — DO NOT venture to sea. If sailing, return immediately to ${portName}.\n` +
+          `• Action Directive: STRICT RED ALERT — DO NOT venture to sea from ${portName}. If sailing, return immediately.\n` +
           `• Emergency VHF: Channel 16 | Coast Guard Helpline: 1554`;
       } else if (risk.riskLevel === 'MODERATE_RISK') {
         offlineText = `⚠️ [FloatChat Offline Engine - Moderate Risk Notice]\n\n` +
           `${captainPrefix}${localized.moderateRisk}\n\n` +
-          `• Sector: ${portName} ${stateName ? `(${stateName})` : ''} | Linked ARGO Buoy #${nearestFloat.wmoId}\n` +
+          `• Tracked Location: ${locationLabel}\n` +
+          `• Nearest Profiler: ARGO Buoy #${nearestFloat.wmoId} (${distanceKm ? `${distanceKm} km / ${distanceNm} NM offshore` : 'Linked Sector'})\n` +
           `• Ocean Conditions: Wave swells ~${nearestFloat.waveHeight}m, Wind gusts up to ${nearestFloat.windSpeedKnots} kts. TCHP is ${nearestFloat.tchp} kJ/cm².\n` +
-          `• Operational Advisory: Country crafts & small catamarans stay strictly within 8-10 nautical miles. Keep lifejackets equipped.`;
+          `• Operational Advisory: Small boats & catamarans from ${portName} stay strictly within 8-10 nautical miles. Keep lifejackets equipped.`;
       } else {
         offlineText = `✅ [FloatChat Offline Engine - Safe Fishing Window]\n\n` +
           `${captainPrefix}${localized.lowRisk}\n\n` +
-          `• Sector: ${portName} ${stateName ? `(${stateName})` : ''} | Linked ARGO Buoy #${nearestFloat.wmoId}\n` +
+          `• Tracked Location: ${locationLabel}\n` +
+          `• Nearest Profiler: ARGO Buoy #${nearestFloat.wmoId} (${distanceKm ? `${distanceKm} km / ${distanceNm} NM offshore` : 'Linked Sector'})\n` +
           `• Ocean State: Calm sea conditions (Waves ~${nearestFloat.waveHeight}m, Temp ${nearestFloat.surfaceTemp}°C, Wind ${nearestFloat.windSpeedKnots} kts).\n` +
           `• Operational Advisory: Safe sailing window open for deep sea and coastal fishing up to standard zones.`;
       }
@@ -134,24 +141,26 @@ Your primary mission is to save lives at sea by translating complex oceanographi
 CURRENT USER & VESSEL PROFILE:
 - Captain Name: ${captainName || 'Coastal Captain'}
 - Boat/Vessel: ${boatName || 'Fishing Craft'} (${boatType || 'Motorized Vessel'})
-- Coastal Sector / Village / State: ${portName} ${stateName ? `, ${stateName}` : ''}
+- Tracked Coastal Village / Harbor: ${portName}${districtName ? `, ${districtName}` : ''}${stateName ? ` (${stateName})` : ''}
 
-CURRENT SITUATION DATA:
-- Nearest ARGO Float Buoy: #${nearestFloat.wmoId} (${nearestFloat.name})
+CURRENT SITUATION & CONDITIONS AT TRACKED LOCATION:
+- Nearest Offshore ARGO Profiler Buoy: #${nearestFloat.wmoId} (${nearestFloat.name}, Basin: ${nearestFloat.basin})
+- Distance from village to buoy: ${distanceKm ? `${distanceKm} km (${distanceNm} Nautical Miles)` : 'Offshore Coastal Zone'}
 - Sea Surface Temperature (SST): ${nearestFloat.surfaceTemp}°C (Anomaly: ${nearestFloat.sstAnomaly > 0 ? '+' : ''}${nearestFloat.sstAnomaly}°C)
 - Depth of 26°C Isotherm (D26): ${nearestFloat.d26Depth} meters
-- Tropical Cyclone Heat Potential (TCHP): ${nearestFloat.tchp} kJ/cm² (Scientific Note: TCHP > 50 kJ/cm² represents a high energy reservoir capable of fueling rapid cyclone intensification)
+- Tropical Cyclone Heat Potential (TCHP): ${nearestFloat.tchp} kJ/cm² (Scientific Note: TCHP > 50 kJ/cm² represents a dangerous energy reservoir capable of fueling rapid cyclone intensification)
 - Estimated Wave Height: ${nearestFloat.waveHeight} meters
-- Wind Speed: ${nearestFloat.windSpeedKnots} knots
+- Surface Winds: ${nearestFloat.windSpeedKnots} knots
 - Evaluated Risk Status: ${nearestFloat.riskLevel} (${nearestFloat.riskCategory})
 - Target Language: ${language} (If requested language is Tamil, Malayalam, Hindi, Telugu, Bengali, Gujarati, Marathi, Odia, or Spanish, respond in that language with clear script, plus brief English summary if helpful).
 
 TONE & GUIDELINES:
-1. Speak with clarity, respect, urgency when needed, and seafaring practicality. Address the captain directly.
-2. Avoid dense academic jargon without an intuitive explanation (e.g. explain TCHP as "hidden ocean heat fuel that can turn an ordinary wind into a violent cyclone overnight").
-3. Give an unmistakable, decisive bottom-line answer first: "GO", "STAY NEAR SHORE (WITHIN X NM)", or "STAY ON LAND / RETURN IMMEDIATELY".
-4. Take into account their vessel type (${boatType || 'standard boat'}) when giving safe sea distances.
-5. If the fisherman asks in a native language or asks for local dialect terms, gladly provide it.`;
+1. Speak with clarity, respect, urgency when needed, and seafaring practicality. Address the captain and mention their tracked village/state directly.
+2. Ground all decisions strictly on the real conditions at this exact tracked location and nearby buoy.
+3. Avoid dense academic jargon without an intuitive explanation (e.g. explain TCHP as "hidden ocean heat fuel that can turn an ordinary wind into a violent cyclone overnight").
+4. Give an unmistakable, decisive bottom-line answer first: "SAFE TO FISH", "CAUTION: STAY NEAR SHORE (WITHIN X NM)", or "DANGER: DO NOT VENTURE / RETURN IMMEDIATELY".
+5. Take into account their vessel type (${boatType || 'standard boat'}) when giving safe sea distances.
+6. If the fisherman asks in a native language or asks for local dialect terms, gladly provide it.`;
 
     const userPrompt = `User question / situation: "${message}"`;
 

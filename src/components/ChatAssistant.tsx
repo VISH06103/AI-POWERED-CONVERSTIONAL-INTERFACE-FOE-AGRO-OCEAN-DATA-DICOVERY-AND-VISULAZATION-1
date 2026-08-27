@@ -15,9 +15,12 @@ import {
   HelpCircle,
   ShieldAlert,
   ShieldCheck,
-  Compass
+  Compass,
+  MapPin,
+  Waves
 } from 'lucide-react';
-import { ArgoFloat, ChatMessage, CoastalPort, OceanRiskLevel, UserProfile } from '../types';
+import { ArgoFloat, ChatMessage, CoastalPort, OceanRiskLevel, UserProfile, VillageConditionResult } from '../types';
+import { identifyVillageOrStateConditionAsync, identifyVillageOrStateCondition } from '../data/coastalVillages';
 
 interface ChatAssistantProps {
   selectedPort: CoastalPort;
@@ -28,6 +31,9 @@ interface ChatAssistantProps {
   externalQuery?: string;
   onClearExternalQuery?: () => void;
   currentUser?: UserProfile | null;
+  activeVillageResult?: VillageConditionResult | null;
+  floats?: ArgoFloat[];
+  onLocationTracked?: (res: VillageConditionResult) => void;
 }
 
 export const ChatAssistant: React.FC<ChatAssistantProps> = ({
@@ -39,20 +45,26 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
   externalQuery,
   onClearExternalQuery,
   currentUser,
+  activeVillageResult,
+  floats = [],
+  onLocationTracked,
 }) => {
+  const activeVillageName = activeVillageResult?.villageName || currentUser?.villageOrPort || selectedPort.name;
+  const activeStateName = activeVillageResult?.state || currentUser?.state || selectedPort.state;
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome-msg',
       role: 'assistant',
       content: currentUser
-        ? `Ahoy Captain ${currentUser.name}! I am FloatChat AI. I'm actively monitoring deep ARGO ocean buoys near ${currentUser.villageOrPort} (${currentUser.state}). Ask me about sea safety, cyclone danger, swell alerts for ${currentUser.boatName}, or voice instructions in your native tongue!`
-        : `Ahoy Captain! I am FloatChat AI. I monitor deep ARGO ocean buoys around ${selectedPort.name} and the ${selectedPort.basin}. Ask me about sea safety, cyclone danger, thermocline heat pools, or voice instructions in your native tongue!`,
+        ? `Ahoy Captain ${currentUser.name}! I am FloatChat AI. I'm actively tracking ocean conditions for ${currentUser.villageOrPort} (${currentUser.state}). Enter any coastal village or state name in our chat, and I will track that exact location, check the nearest ARGO ocean buoys, and give you real-time safety decisions!`
+        : `Ahoy Captain! I am FloatChat AI. I monitor deep ARGO ocean buoys along ${selectedPort.name} and the ${selectedPort.basin}. Type any village, coastal port, or state name, and I will automatically identify and track conditions for that location!`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       actionPills: [
-        `Is it safe to go fishing near ${currentUser ? currentUser.villageOrPort.split(' ')[0] : selectedPort.name.split(' ')[0]} today?`,
+        `Is it safe to go fishing near ${activeVillageName.split(' ')[0]} today?`,
+        `Check sea condition for Kasimedu, Tamil Nadu`,
+        `What is the wave height and cyclone risk in Veraval, Gujarat?`,
         `Explain ARGO buoy #${selectedFloat.wmoId} data in simple words`,
-        `What is Tropical Cyclone Heat Potential (TCHP)?`,
-        `Generate an emergency SMS for my crew`,
       ],
     },
   ]);
@@ -171,6 +183,33 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
     setIsLoading(true);
 
     try {
+      // 1. Dynamic Location Identification in Chat Messages
+      let contextFloat = selectedFloat;
+      let contextVillage = activeVillageResult?.villageName || currentUser?.villageOrPort || selectedPort.name;
+      let contextDistrict = activeVillageResult?.district || '';
+      let contextState = activeVillageResult?.state || currentUser?.state || selectedPort.state;
+      let contextDistanceKm = activeVillageResult?.distanceToFloatKm ? String(activeVillageResult.distanceToFloatKm) : '';
+      let contextDistanceNm = activeVillageResult?.trackInfo?.distanceNauticalMiles ? String(activeVillageResult.trackInfo.distanceNauticalMiles) : '';
+
+      // Check if user query mentions any state, village, harbor, or coordinate
+      try {
+        const detectedLoc = await identifyVillageOrStateConditionAsync(query, floats.length > 0 ? floats : [selectedFloat], isOffline);
+        // If detected a real place match rather than purely generic query
+        if (detectedLoc && !detectedLoc.isCustomGeocoded) {
+          contextFloat = detectedLoc.nearestFloat;
+          contextVillage = detectedLoc.villageName;
+          contextDistrict = detectedLoc.district;
+          contextState = detectedLoc.state;
+          contextDistanceKm = String(detectedLoc.distanceToFloatKm);
+          contextDistanceNm = String(detectedLoc.trackInfo?.distanceNauticalMiles || Math.round(detectedLoc.distanceToFloatKm * 0.539957));
+          if (onLocationTracked) {
+            onLocationTracked(detectedLoc);
+          }
+        }
+      } catch {
+        // Continue with current active context
+      }
+
       const response = await fetch('/api/gemini/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -178,14 +217,17 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
           message: query,
           context: {
             selectedPort,
-            selectedFloat,
+            selectedFloat: contextFloat,
             language: currentLanguage,
             offlineMode: isOffline,
             captainName: currentUser?.name,
             boatName: currentUser?.boatName,
             boatType: currentUser?.boatType,
-            villageName: currentUser?.villageOrPort,
-            state: currentUser?.state,
+            villageName: contextVillage,
+            district: contextDistrict,
+            state: contextState,
+            distanceKm: contextDistanceKm,
+            distanceNm: contextDistanceNm,
           },
         }),
       });
@@ -206,7 +248,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
       const fallbackMsg: ChatMessage = {
         id: `fallback-${Date.now()}`,
         role: 'assistant',
-        content: `⚠️ [Offline Safety Rule] High precaution recommended for ${selectedPort.name}. Nearest ARGO buoy #${selectedFloat.wmoId} records TCHP ${selectedFloat.tchp} kJ/cm² and wave swell ${selectedFloat.waveHeight}m. Verify VHF Ch 16 with Coast Guard.`,
+        content: `⚠️ [Offline Safety Rule] High precaution recommended for ${activeVillageName}. Nearest ARGO buoy #${selectedFloat.wmoId} records TCHP ${selectedFloat.tchp} kJ/cm² and wave swell ${selectedFloat.waveHeight}m. Verify VHF Ch 16 with Coast Guard.`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         isOfflineResponse: true,
       };
@@ -245,8 +287,11 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-slate-400">
-              Grounded in ARGO Float #{selectedFloat.wmoId} • {selectedPort.name}
+            <p className="text-[11px] text-slate-300 flex items-center gap-1 mt-0.5">
+              <MapPin className="w-3 h-3 text-emerald-400 shrink-0 animate-pulse" />
+              <span className="truncate font-semibold text-white">{activeVillageName}</span>
+              <span className="text-slate-500">•</span>
+              <span className="text-slate-400 font-mono">ARGO #{selectedFloat.wmoId}</span>
             </p>
           </div>
         </div>

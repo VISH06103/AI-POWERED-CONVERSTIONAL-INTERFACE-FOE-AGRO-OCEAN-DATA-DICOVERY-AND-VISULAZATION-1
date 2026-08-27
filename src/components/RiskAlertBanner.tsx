@@ -12,9 +12,10 @@ import {
   MessageSquareText, 
   LineChart, 
   Info,
-  ChevronRight
+  ChevronRight,
+  MapPin
 } from 'lucide-react';
-import { ArgoFloat, CoastalPort, OceanRiskLevel } from '../types';
+import { ArgoFloat, CoastalPort, OceanRiskLevel, VillageConditionResult } from '../types';
 import { MULTILINGUAL_ADVISORIES } from '../utils/oceanPhysics';
 
 interface RiskAlertBannerProps {
@@ -26,6 +27,7 @@ interface RiskAlertBannerProps {
   onOpenDepthProfile: (float: ArgoFloat) => void;
   onOpenBroadcast: () => void;
   onAskChatbot: (question: string) => void;
+  activeVillageResult?: VillageConditionResult | null;
 }
 
 export const RiskAlertBanner: React.FC<RiskAlertBannerProps> = ({
@@ -37,6 +39,7 @@ export const RiskAlertBanner: React.FC<RiskAlertBannerProps> = ({
   onOpenDepthProfile,
   onOpenBroadcast,
   onAskChatbot,
+  activeVillageResult,
 }) => {
   const localizedInfo = MULTILINGUAL_ADVISORIES[language] || MULTILINGUAL_ADVISORIES.en;
   
@@ -81,6 +84,9 @@ export const RiskAlertBanner: React.FC<RiskAlertBannerProps> = ({
         borderAccent: 'border-l-4 border-l-emerald-500',
       };
 
+  const villageTitle = activeVillageResult?.villageName || selectedPort.name;
+  const stateTitle = activeVillageResult?.state || selectedPort.state;
+
   return (
     <div id="risk-alert-banner" className={`relative rounded-2xl border p-4 sm:p-6 transition-all ${themeClasses.container} ${themeClasses.borderAccent}`}>
       
@@ -97,8 +103,12 @@ export const RiskAlertBanner: React.FC<RiskAlertBannerProps> = ({
               <span className={`text-[10px] uppercase tracking-widest px-2.5 py-0.5 rounded-full ${themeClasses.badge}`}>
                 {riskLevel.replace('_', ' ')}
               </span>
+              <span className="text-xs text-slate-300 font-medium flex items-center gap-1.5 bg-slate-900 px-2.5 py-0.5 rounded-md border border-slate-800">
+                <MapPin className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                <strong className="text-white">{villageTitle}</strong> ({stateTitle})
+              </span>
               <span className="text-xs text-slate-400 font-mono">
-                ARGO Buoy #{nearestFloat.wmoId} • {selectedPort.name} Sector
+                ARGO #{nearestFloat.wmoId} {activeVillageResult?.distanceToFloatKm ? `• ${activeVillageResult.distanceToFloatKm} km offshore` : ''}
               </span>
             </div>
             <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white mt-1">

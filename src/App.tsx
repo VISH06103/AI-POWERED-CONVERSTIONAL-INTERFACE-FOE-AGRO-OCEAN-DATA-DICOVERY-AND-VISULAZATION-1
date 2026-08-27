@@ -10,10 +10,11 @@ import { SimulationModal } from './components/SimulationModal';
 import { LoginPage } from './components/LoginPage';
 import { VillageStateConditionFinder } from './components/VillageStateConditionFinder';
 import { MobileSensorTelemetryHUD } from './components/MobileSensorTelemetryHUD';
+import { OceanVoyageRadioTransponder } from './components/OceanVoyageRadioTransponder';
 import { useMobileSensors } from './hooks/useMobileSensors';
-import { ArgoFloat, CoastalPort, OceanRiskLevel, SimulationPreset, UserProfile, VillageConditionResult } from './types';
+import { ArgoFloat, CoastalPort, OceanRiskLevel, SimulationPreset, UserProfile, VillageConditionResult, VoyageNavigationState } from './types';
 import { BASE_ARGO_FLOATS, COASTAL_PORTS, getEnrichedFloats, SIMULATION_PRESETS } from './data/argoDataset';
-import { DEMO_CAPTAINS } from './data/coastalVillages';
+import { DEMO_CAPTAINS, identifyVillageOrStateCondition } from './data/coastalVillages';
 import { calculateDistanceKm, evaluateOceanRisk } from './utils/oceanPhysics';
 import { 
   Anchor, 
@@ -34,7 +35,7 @@ import {
 } from 'lucide-react';
 
 export default function App() {
-  // User Profile state (loaded from local storage or default demo)
+  // User Profile state (loaded from local storage or null if not yet logged in)
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
     try {
       const stored = localStorage.getItem('floatchat_user_profile');
@@ -44,10 +45,11 @@ export default function App() {
     } catch (e) {
       console.warn('Error reading stored user profile:', e);
     }
-    return DEMO_CAPTAINS[0]; // Default to Captain Velu (Kasimedu)
+    return null; // Show Login & Setup first on fresh visit
   });
 
-  const [isLoginPageOpen, setIsLoginPageOpen] = useState<boolean>(false);
+  // Open Login / Profile form first when visiting
+  const [isLoginPageOpen, setIsLoginPageOpen] = useState<boolean>(true);
 
   // State variables
   const [ports, setPorts] = useState<CoastalPort[]>(COASTAL_PORTS);
@@ -78,6 +80,9 @@ export default function App() {
     isSimulatedJammed: isOffline,
     onJammerAlert: () => setIsOffline(true),
   });
+
+  // Ocean Voyage & Transponder State (Live GPS Track offshore & auto radio when jammed)
+  const [voyageState, setVoyageState] = useState<VoyageNavigationState | null>(null);
 
   // Modals
   const [inspectFloat, setInspectFloat] = useState<ArgoFloat | null>(null);
@@ -249,26 +254,17 @@ export default function App() {
     setCurrentUser(profile);
     setIsLoginPageOpen(false);
     
-    // Auto sync location
-    const matched = COASTAL_PORTS.find(p => p.state === profile.state || profile.villageOrPort.includes(p.name));
-    if (matched) {
-      setSelectedPort(matched);
-    } else {
-      setSelectedPort({
-        id: `port-${profile.id}`,
-        name: `${profile.villageOrPort} (${profile.state})`,
-        nativeName: profile.villageOrPort,
-        country: 'India',
-        lat: 13.12,
-        lng: 80.29,
-        state: profile.state,
-        basin: 'Bay of Bengal',
-        primaryLanguage: profile.language,
-        coastGuardContact: 'VHF Emergency Channel 16 / Helpline: 1554',
-        vhfChannel: 'Ch 16 / 68',
-        currentWarningStatus: 'LOW_RISK',
-        activeBoatsCount: 280,
-      });
+    // Auto resolve condition & map tracking for user's village or state
+    try {
+      const villageLookup = profile.villageOrPort || profile.state;
+      const res = identifyVillageOrStateCondition(villageLookup, floats, isOffline);
+      handleSetActiveLocation(res);
+    } catch {
+      // Auto sync location fallback
+      const matched = COASTAL_PORTS.find(p => p.state === profile.state || profile.villageOrPort.includes(p.name));
+      if (matched) {
+        setSelectedPort(matched);
+      }
     }
 
     if (profile.language) {
@@ -283,6 +279,7 @@ export default function App() {
     } catch (e) {
       console.warn(e);
     }
+    setIsLoginPageOpen(true);
   };
 
   // If login modal is opened as standalone view
@@ -371,9 +368,17 @@ export default function App() {
             <div className="flex items-center gap-2 self-end sm:self-auto">
               <button
                 onClick={() => setIsLoginPageOpen(true)}
-                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-300 transition-colors"
+                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-300 transition-colors flex items-center gap-1.5"
               >
-                Switch Profile / Village
+                <User className="w-3.5 h-3.5 text-blue-400" />
+                <span>Switch Profile / Village</span>
+              </button>
+              <button
+                onClick={handleLogout}
+                className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-rose-950/70 border border-slate-700 hover:border-rose-700/80 text-xs font-semibold text-slate-400 hover:text-rose-300 transition-colors flex items-center gap-1"
+                title="Logout"
+              >
+                <span>Logout</span>
               </button>
             </div>
           </div>
@@ -405,6 +410,18 @@ export default function App() {
           onUpdateSimulatedBaro={setSimulatedBaroHpa}
         />
 
+        {/* Automated Ocean Voyage & Radio Distress Transponder (Auto connects & sends radio message when jammed at sea) */}
+        <OceanVoyageRadioTransponder
+          currentUser={currentUser}
+          activeVillageResult={activeVillageResult}
+          nearestFloat={selectedFloat}
+          riskLevel={currentRiskLevel}
+          sensorReading={sensorReading}
+          isSimulatedJammedExternal={isOffline || isInternetJammed}
+          onToggleJammerExternal={() => setIsOffline(!isOffline)}
+          onVoyageStateChange={setVoyageState}
+        />
+
         {/* Primary Large Risk Alert Banner */}
         <RiskAlertBanner
           riskLevel={currentRiskLevel}
@@ -415,6 +432,7 @@ export default function App() {
           onOpenDepthProfile={(f) => setInspectFloat(f)}
           onOpenBroadcast={() => setIsBroadcastOpen(true)}
           onAskChatbot={(q) => setExternalChatQuery(q)}
+          activeVillageResult={activeVillageResult}
         />
 
         {/* Two-Column Main Layout */}
@@ -443,6 +461,11 @@ export default function App() {
                 onSelectFloat={(f) => setInspectFloat(f)}
                 onSelectPort={setSelectedPort}
                 onOpenDepthProfile={(f) => setInspectFloat(f)}
+                activeTrackedLocation={activeVillageResult}
+                onLocationTracked={(res) => handleSetActiveLocation(res)}
+                onAskChat={(query) => setExternalChatQuery(query)}
+                voyageState={voyageState}
+                currentUser={currentUser}
               />
             </div>
 
@@ -502,6 +525,9 @@ export default function App() {
               externalQuery={externalChatQuery}
               onClearExternalQuery={() => setExternalChatQuery('')}
               currentUser={currentUser}
+              activeVillageResult={activeVillageResult}
+              floats={floats}
+              onLocationTracked={handleSetActiveLocation}
             />
 
             {/* Quick Emergency Broadcast / Simulation Trigger Box */}
@@ -541,6 +567,10 @@ export default function App() {
         selectedPort={selectedPort}
         nearestFloat={selectedFloat}
         riskLevel={currentRiskLevel}
+        currentUser={currentUser}
+        activeVillageResult={activeVillageResult}
+        sensorReading={sensorReading}
+        isInternetJammed={isInternetJammed || isOffline}
       />
 
       <OfflineCacheManager
