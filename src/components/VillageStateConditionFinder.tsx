@@ -62,7 +62,7 @@ export const VillageStateConditionFinder: React.FC<VillageStateConditionFinderPr
   const [result, setResult] = useState<VillageConditionResult | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
-  const [activeTab, setActiveTab] = useState<'CONDITIONS' | 'TRACK' | 'BIODATA'>('CONDITIONS');
+  const [activeTab, setActiveTab] = useState<'CONDITIONS' | 'TRACK' | 'STATION' | 'BIODATA'>('CONDITIONS');
   const [isGpsLocating, setIsGpsLocating] = useState(false);
   const [gpsErrorMsg, setGpsErrorMsg] = useState<string | null>(null);
   const [showCoordinateInput, setShowCoordinateInput] = useState(false);
@@ -397,6 +397,37 @@ export const VillageStateConditionFinder: React.FC<VillageStateConditionFinderPr
       {result && (
         <div className="mt-4 pt-4 border-t border-slate-800/80 space-y-4">
           
+          {/* Back Button & Navigation Bar */}
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setResult(null);
+                setQuery('');
+              }}
+              className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-slate-600 text-slate-200 hover:text-white text-xs font-bold flex items-center gap-1.5 shadow transition-all active:scale-95"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+              <span>← Back to Search & Location Picker</span>
+            </button>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">
+                Track Target: <strong>{result.villageName}</strong> ({result.lat.toFixed(2)}°N, {result.lng.toFixed(2)}°E)
+              </span>
+              {onSetActiveLocation && (
+                <button
+                  type="button"
+                  onClick={() => onSetActiveLocation(result)}
+                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1 shadow transition-all active:scale-95"
+                >
+                  <Crosshair className="w-3.5 h-3.5" />
+                  <span>Lock & Pin Location</span>
+                </button>
+              )}
+            </div>
+          </div>
+          
           {/* Top Result Header Card */}
           <div className={`p-4 sm:p-5 rounded-2xl border transition-all ${
             result.riskLevel === 'HIGH_RISK'
@@ -506,10 +537,10 @@ export const VillageStateConditionFinder: React.FC<VillageStateConditionFinderPr
           </div>
 
           {/* Sub-view Navigation Tabs */}
-          <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+          <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto">
             <button
               onClick={() => setActiveTab('CONDITIONS')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 transition-all ${
                 activeTab === 'CONDITIONS'
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30'
                   : 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800'
@@ -521,19 +552,31 @@ export const VillageStateConditionFinder: React.FC<VillageStateConditionFinderPr
 
             <button
               onClick={() => setActiveTab('TRACK')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 transition-all ${
                 activeTab === 'TRACK'
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30'
                   : 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800'
               }`}
             >
               <Route className="w-3.5 h-3.5" />
-              <span>Location-Based Track & Corridors</span>
+              <span>Exact Nautical Track & Waypoints</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('STATION')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 transition-all ${
+                activeTab === 'STATION'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30'
+                  : 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800'
+              }`}
+            >
+              <TowerControl className="w-3.5 h-3.5 text-amber-400" />
+              <span>Coast Guard & Radio Station Destination</span>
             </button>
 
             <button
               onClick={() => setActiveTab('BIODATA')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 transition-all ${
                 activeTab === 'BIODATA'
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30'
                   : 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800'
@@ -796,7 +839,108 @@ export const VillageStateConditionFinder: React.FC<VillageStateConditionFinderPr
             </div>
           )}
 
-          {/* TAB 3: MARINE BIODATA & PFZ */}
+          {/* TAB 3: COASTAL STATION & EMERGENCY DESTINATION */}
+          {activeTab === 'STATION' && (() => {
+            const station = getCoastalRadioStation(result.state || result.villageName);
+            return (
+              <div className="space-y-4">
+                {/* Station Routing Destination Header */}
+                <div className="p-4 rounded-2xl bg-[#020617] border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="p-1.5 rounded-lg bg-amber-600/20 border border-amber-500/30 text-amber-400 font-bold text-xs font-mono">
+                        DESTINATION STATION
+                      </span>
+                      <span className="text-sm font-bold text-white font-mono">
+                        {station.stationName} ({station.callsign})
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Assigned Maritime Coastal Radio & Indian Coast Guard MRCC station for <strong>{result.villageName}, {result.state}</strong>.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => playRadioHandshakeSound()}
+                      className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-cyan-300 text-xs font-bold flex items-center gap-1.5 transition-all shadow active:scale-95"
+                    >
+                      <Signal className="w-3.5 h-3.5" />
+                      <span>Test Radio Pulse</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Grid of Station Coordinates & Channels */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs font-mono">
+                  <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
+                    <span className="text-slate-500 text-[11px]">Primary Radio Frequency:</span>
+                    <div className="font-bold text-cyan-400 text-sm">{station.primaryVhfChannel}</div>
+                    <div className="text-slate-400 text-[10px]">MF/HF Distress: {station.hfDistressKhz} kHz</div>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
+                    <span className="text-slate-500 text-[11px]">Digital Selective Calling (DSC):</span>
+                    <div className="font-bold text-emerald-400 text-sm">{station.dscMmsi}</div>
+                    <div className="text-slate-400 text-[10px]">Coverage: ~{station.transmissionRangeNm} NM Offshore</div>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
+                    <span className="text-slate-500 text-[11px]">Assigned Coverage Sector:</span>
+                    <div className="font-bold text-white text-sm truncate">{station.coverageSector}</div>
+                    <div className="text-slate-400 text-[10px]">Basin: {result.basin}</div>
+                  </div>
+
+                  {/* Direct Contact Phone 1: Coast Guard MRCC Helpline */}
+                  <div className="p-3.5 rounded-2xl bg-rose-950/30 border border-rose-900/60 space-y-2 flex flex-col justify-between">
+                    <div>
+                      <span className="text-rose-400 text-[11px] font-bold">Indian Coast Guard Helpline:</span>
+                      <div className="font-bold text-white text-sm">{station.mrccHelpline}</div>
+                      <div className="text-slate-400 text-[10px]">{station.mrccPhoneFormatted} (24x7 SAR)</div>
+                    </div>
+                    <a
+                      href={`tel:${station.mrccPhoneRaw}`}
+                      className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-rose-950/40 transition-all active:scale-95"
+                    >
+                      <PhoneCall className="w-3.5 h-3.5" />
+                      <span>Call Coast Guard MRCC</span>
+                    </a>
+                  </div>
+
+                  {/* Direct Contact Phone 2: Harbor Master */}
+                  <div className="p-3.5 rounded-2xl bg-blue-950/30 border border-blue-900/60 space-y-2 flex flex-col justify-between">
+                    <div>
+                      <span className="text-blue-400 text-[11px] font-bold">Harbor Master / Fisheries Desk:</span>
+                      <div className="font-bold text-white text-sm truncate">{station.districtFisheriesOfficer}</div>
+                      <div className="text-slate-400 text-[10px]">{station.stationDirectPhoneFormatted}</div>
+                    </div>
+                    <a
+                      href={`tel:${station.districtFisheriesPhoneRaw}`}
+                      className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-blue-950/40 transition-all active:scale-95"
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                      <span>Call Harbor Control</span>
+                    </a>
+                  </div>
+
+                  {/* Direct Navigation Refuge Gateway */}
+                  <div className="p-3.5 rounded-2xl bg-emerald-950/30 border border-emerald-900/60 space-y-2 flex flex-col justify-between">
+                    <div>
+                      <span className="text-emerald-400 text-[11px] font-bold">Refuge Harbor & Safe Waypoint:</span>
+                      <div className="font-bold text-white text-sm truncate">{result.trackInfo.nearestRefugeHarbor}</div>
+                      <div className="text-slate-400 text-[10px]">Transit: ~{result.trackInfo.estimatedTransitMinutes} min @ 10 kts</div>
+                    </div>
+                    <div className="text-emerald-300 text-[11px] font-bold">
+                      Return Vector: {result.trackInfo.safeReturnDirection}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* TAB 4: MARINE BIODATA & PFZ */}
           {activeTab === 'BIODATA' && (
             <div className="space-y-4">
               

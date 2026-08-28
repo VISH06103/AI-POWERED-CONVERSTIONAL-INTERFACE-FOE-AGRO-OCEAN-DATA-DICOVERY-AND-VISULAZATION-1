@@ -14,10 +14,17 @@ import {
   Send,
   UserCheck,
   WifiOff,
-  Navigation
+  Navigation,
+  MessageCircle
 } from 'lucide-react';
 import { ArgoFloat, CoastalPort, MobileSensorReading, OceanRiskLevel, UserProfile, VillageConditionResult } from '../types';
-import { generateEmergencySMS, generateRegisteredCaptainRadioPacket, generateVhfRadioScript, playMarineRadioDistressAudio } from '../utils/oceanPhysics';
+import { 
+  generateEmergencySMS, 
+  generateRegisteredCaptainSMS,
+  generateRegisteredCaptainRadioPacket, 
+  generateVhfRadioScript, 
+  playMarineRadioDistressAudio 
+} from '../utils/oceanPhysics';
 
 interface EmergencyBroadcastModalProps {
   isOpen: boolean;
@@ -82,7 +89,17 @@ export const EmergencyBroadcastModal: React.FC<EmergencyBroadcastModalProps> = (
     isInternetJammed ? 'SIGNAL_JAMMED' : 'DEADZONE_AUTO_TRIGGER'
   );
 
-  const smsText = generateEmergencySMS(villageName, riskLevel, nearestFloat.tchp, nearestFloat.waveHeight);
+  const captainSmsObj = generateRegisteredCaptainSMS(
+    currentUser || null,
+    nearestFloat,
+    villageName,
+    stateName,
+    riskLevel,
+    undefined,
+    isInternetJammed
+  );
+  const smsText = captainSmsObj.smsText;
+  const targetPhone = captainSmsObj.targetPhone;
   const vhfScript = registeredPacket.spokenVhfScript;
 
   const handleCopy = (key: string, text: string) => {
@@ -245,12 +262,14 @@ export const EmergencyBroadcastModal: React.FC<EmergencyBroadcastModalProps> = (
           {activeTab === 'sms' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-slate-300">Formatted for 2G / GSM Fisherman Handsets</span>
+                <span className="font-semibold text-slate-300">
+                  Target Mobile: <strong className="text-emerald-400 font-mono">{targetPhone}</strong> (Registered Captain)
+                </span>
                 <span className="font-mono text-blue-400 font-bold">{smsText.length} / 160 Characters</span>
               </div>
 
               {/* Simulated Mobile SMS Bubble */}
-              <div className="p-4 rounded-2xl bg-[#020617] border border-slate-800 shadow-inner font-mono text-xs text-slate-100 leading-relaxed relative">
+              <div className="p-4 rounded-2xl bg-[#020617] border border-slate-800 shadow-inner font-mono text-xs text-emerald-300 leading-relaxed relative selection:bg-emerald-800 select-all">
                 {smsText}
               </div>
 
@@ -264,11 +283,21 @@ export const EmergencyBroadcastModal: React.FC<EmergencyBroadcastModalProps> = (
                 </button>
 
                 <a
-                  href={`sms:?body=${encodeURIComponent(smsText)}`}
-                  className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                  href={`sms:${encodeURIComponent(targetPhone)}?body=${encodeURIComponent(smsText)}`}
+                  className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-900/30 transition-all"
                 >
-                  <Send className="w-4 h-4 text-emerald-400" />
-                  <span>Send via Device SMS App</span>
+                  <Send className="w-4 h-4 text-white" />
+                  <span>Send to Phone ({targetPhone})</span>
+                </a>
+
+                <a
+                  href={`https://api.whatsapp.com/send?phone=${encodeURIComponent(targetPhone.replace(/[^0-9]/g, ''))}&text=${encodeURIComponent(smsText)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2.5 rounded-xl bg-[#25D366] hover:bg-[#1EBE5D] text-black font-extrabold text-xs flex items-center gap-1.5 shadow transition-all"
+                >
+                  <MessageCircle className="w-4 h-4 fill-black" />
+                  <span>Send via WhatsApp</span>
                 </a>
               </div>
 

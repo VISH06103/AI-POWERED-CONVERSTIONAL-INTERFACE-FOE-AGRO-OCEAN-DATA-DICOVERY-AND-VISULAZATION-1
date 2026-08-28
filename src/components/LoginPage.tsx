@@ -250,9 +250,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 <label className="block text-xs font-bold text-slate-200 mb-1 flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
                     <Phone className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Mobile Number</span>
+                    <span>Registered Mobile Number</span>
                   </span>
-                  <span className="text-[10px] text-slate-400 font-mono">For VHF / SOS SMS Alerts</span>
+                  <span className="text-[10px] text-emerald-400 font-mono font-bold">Auto-Receives SMS Alerts</span>
                 </label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 font-mono">
@@ -270,6 +270,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-14 pr-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors font-mono"
                   />
                 </div>
+                <p className="text-[11px] text-slate-400 mt-1 flex items-start gap-1">
+                  <span className="text-emerald-400 font-bold shrink-0 mt-0.5">✓</span>
+                  <span>When registered, all 160-character emergency SMS distress alerts, deadzone failovers, and high cyclone hazard warnings are automatically routed to this mobile number.</span>
+                </p>
               </div>
 
               {/* 3. Coastal State */}

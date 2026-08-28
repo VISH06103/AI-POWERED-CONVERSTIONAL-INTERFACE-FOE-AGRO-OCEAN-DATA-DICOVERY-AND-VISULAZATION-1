@@ -193,7 +193,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
 
       // Check if user query mentions any state, village, harbor, or coordinate
       try {
-        const detectedLoc = await identifyVillageOrStateConditionAsync(query, floats.length > 0 ? floats : [selectedFloat], isOffline);
+        const detectedLoc = await identifyVillageOrStateConditionAsync(query, floats.length > 0 ? floats : [selectedFloat], false);
         // If detected a real place match rather than purely generic query
         if (detectedLoc && !detectedLoc.isCustomGeocoded) {
           contextFloat = detectedLoc.nearestFloat;
@@ -210,45 +210,79 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
         // Continue with current active context
       }
 
-      const response = await fetch('/api/gemini/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: query,
-          context: {
-            selectedPort,
-            selectedFloat: contextFloat,
-            language: currentLanguage,
-            offlineMode: isOffline,
-            captainName: currentUser?.name,
-            boatName: currentUser?.boatName,
-            boatType: currentUser?.boatType,
-            villageName: contextVillage,
-            district: contextDistrict,
-            state: contextState,
-            distanceKm: contextDistanceKm,
-            distanceNm: contextDistanceNm,
-          },
-        }),
-      });
+      let replyContent = '';
+      let isFallbackResponse = false;
 
-      const data = await response.json();
+      try {
+        const response = await fetch('/api/gemini/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: query,
+            context: {
+              selectedPort,
+              selectedFloat: contextFloat,
+              language: currentLanguage,
+              offlineMode: isOffline,
+              captainName: currentUser?.name,
+              boatName: currentUser?.boatName,
+              boatType: currentUser?.boatType,
+              villageName: contextVillage,
+              district: contextDistrict,
+              state: contextState,
+              distanceKm: contextDistanceKm,
+              distanceNm: contextDistanceNm,
+            },
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          replyContent = data.reply || '';
+          isFallbackResponse = Boolean(data.source?.includes('offline') || data.source?.includes('local') || data.isFallback);
+        }
+      } catch (networkErr) {
+        console.warn('Network error reaching /api/gemini/chat:', networkErr);
+      }
+
+      if (!replyContent) {
+        // Safe dynamic fallback if server response was empty or non-200
+        const qLower = query.toLowerCase();
+        if (qLower.includes('fish') || qLower.includes('catch') || qLower.includes('species') || qLower.includes('vanjaram')) {
+          replyContent = `🐟 [Marine Catch Advisory] For ${activeVillageName}:\n• Mixed Layer Depth: ${contextFloat.mld}m | Thermocline: ${contextFloat.d26Depth}m\n• Pelagic shoals (Mackerel, Sardines, Tuna) congregate between ${Math.max(10, contextFloat.mld - 10)}m and ${Math.min(60, contextFloat.d26Depth + 10)}m.\n• Safety: ${contextFloat.riskLevel === 'HIGH_RISK' ? '⚠️ High wave swells — avoid deep sea venture.' : '🟢 Favorable coastal fishing conditions.'}`;
+        } else if (qLower.includes('radio') || qLower.includes('station') || qLower.includes('call') || qLower.includes('help')) {
+          replyContent = `📻 [Emergency Radio Relay]\n• Standby Channel: VHF Channel 16 (156.800 MHz)\n• Indian Coast Guard Maritime Search & Rescue: Toll-free 1554\n• Port Desk: Designated Harbor Fisheries Authority`;
+        } else {
+          replyContent = `⚓ [Marine Safety Assessment] For ${activeVillageName}:\n• Linked ARGO Buoy #${contextFloat.wmoId}: Swell ${contextFloat.waveHeight}m, Winds ${contextFloat.windSpeedKnots} kts, TCHP ${contextFloat.tchp} kJ/cm².\n• Status: ${contextFloat.riskLevel} (${contextFloat.waveHeight >= 3.0 ? 'High swell warning in effect' : 'Normal sea conditions'}).\n• Directive: ${contextFloat.riskLevel === 'HIGH_RISK' ? 'DO NOT SAIL — High risk sea state.' : 'Safe navigation within authorized coastal waters.'}`;
+        }
+        isFallbackResponse = true;
+      }
 
       const assistantMsg: ChatMessage = {
         id: `ai-${Date.now()}`,
         role: 'assistant',
-        content: data.reply || 'No response available.',
+        content: replyContent,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        isOfflineResponse: Boolean(data.source?.includes('offline') || data.isFallback),
+        isOfflineResponse: isFallbackResponse,
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
     } catch (error) {
       console.error('Chat error:', error);
+      const qLower = query.toLowerCase();
+      let fallbackText = '';
+      if (qLower.includes('fish') || qLower.includes('catch') || qLower.includes('species') || qLower.includes('vanjaram')) {
+        fallbackText = `🐟 [Marine Catch Advisory] For ${activeVillageName}:\nThermocline depth is at ${selectedFloat.d26Depth}m. Pelagic shoals (Mackerel, Sardines, Tuna) are active between ${Math.max(10, selectedFloat.mld - 10)}m and ${Math.min(60, selectedFloat.d26Depth + 10)}m depth.`;
+      } else if (qLower.includes('radio') || qLower.includes('station') || qLower.includes('call') || qLower.includes('help')) {
+        fallbackText = `📻 [Radio Relay] Standby on VHF Channel 16 (156.800 MHz). Indian Coast Guard Emergency Helpline is 1554.`;
+      } else {
+        fallbackText = `⚠️ [Ocean Advisory] For ${activeVillageName}:\nNearest ARGO buoy #${selectedFloat.wmoId} reports wave swells of ${selectedFloat.waveHeight}m, TCHP ${selectedFloat.tchp} kJ/cm², and SST ${selectedFloat.surfaceTemp}°C. ${selectedFloat.waveHeight >= 3.0 ? 'Red alert: high waves, do not venture out.' : 'Normal fishing conditions near shore.'}`;
+      }
+
       const fallbackMsg: ChatMessage = {
         id: `fallback-${Date.now()}`,
         role: 'assistant',
-        content: `⚠️ [Offline Safety Rule] High precaution recommended for ${activeVillageName}. Nearest ARGO buoy #${selectedFloat.wmoId} records TCHP ${selectedFloat.tchp} kJ/cm² and wave swell ${selectedFloat.waveHeight}m. Verify VHF Ch 16 with Coast Guard.`,
+        content: fallbackText,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         isOfflineResponse: true,
       };
